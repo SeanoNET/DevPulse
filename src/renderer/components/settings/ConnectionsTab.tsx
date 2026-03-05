@@ -14,6 +14,7 @@ const INTEGRATIONS: {
   tokenPlaceholder: string
   helpUrl: string
   showUrl?: boolean
+  showEmail?: boolean
 }[] = [
   {
     source: 'github',
@@ -28,7 +29,8 @@ const INTEGRATIONS: {
     tokenLabel: 'API Token',
     tokenPlaceholder: 'Atlassian API token',
     helpUrl: 'https://id.atlassian.com/manage-profile/security/api-tokens',
-    showUrl: true
+    showUrl: true,
+    showEmail: true
   },
   {
     source: 'octopus',
@@ -43,6 +45,7 @@ const INTEGRATIONS: {
 export function ConnectionsTab({ connectedSources, onRefresh }: ConnectionsTabProps) {
   const [tokenInputs, setTokenInputs] = useState<Record<string, string>>({})
   const [urlInputs, setUrlInputs] = useState<Record<string, string>>({})
+  const [emailInputs, setEmailInputs] = useState<Record<string, string>>({})
   const [connecting, setConnecting] = useState<EventSource | null>(null)
   const [testing, setTesting] = useState<EventSource | null>(null)
   const [feedback, setFeedback] = useState<{ source: EventSource; ok: boolean; message: string } | null>(null)
@@ -58,6 +61,10 @@ export function ConnectionsTab({ connectedSources, onRefresh }: ConnectionsTabPr
       if (url) {
         await window.api.saveApiKey(source, url)
       }
+      const email = emailInputs[source]?.trim()
+      if (email) {
+        await window.api.saveApiKey(source, email)
+      }
       await window.api.saveApiKey(source, token)
 
       // Test the connection
@@ -66,6 +73,7 @@ export function ConnectionsTab({ connectedSources, onRefresh }: ConnectionsTabPr
         setFeedback({ source, ok: true, message: 'Connected successfully' })
         setTokenInputs((prev) => ({ ...prev, [source]: '' }))
         setUrlInputs((prev) => ({ ...prev, [source]: '' }))
+        setEmailInputs((prev) => ({ ...prev, [source]: '' }))
         onRefresh()
       } else {
         // Remove bad credentials
@@ -146,6 +154,15 @@ export function ConnectionsTab({ connectedSources, onRefresh }: ConnectionsTabPr
                     placeholder={source === 'jira' ? 'Site URL (e.g. https://yoursite.atlassian.net)' : 'Server URL (e.g. https://octopus.example.com)'}
                     value={urlInputs[source] ?? ''}
                     onChange={(e) => setUrlInputs((prev) => ({ ...prev, [source]: e.target.value }))}
+                    className="w-full px-2 py-1.5 text-xs rounded border border-input bg-background"
+                  />
+                )}
+                {showEmail && (
+                  <input
+                    type="email"
+                    placeholder="Email (e.g. you@company.com)"
+                    value={emailInputs[source] ?? ''}
+                    onChange={(e) => setEmailInputs((prev) => ({ ...prev, [source]: e.target.value }))}
                     className="w-full px-2 py-1.5 text-xs rounded border border-input bg-background"
                   />
                 )}

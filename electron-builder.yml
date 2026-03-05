@@ -59,6 +59,6 @@ deb:
 
 publish:
   provider: github
-  owner: seano
-  repo: devpulse
+  owner: SeanoNET
+  repo: DevPulse
   releaseType: release

@@ -38,40 +38,47 @@ export class GitHubIntegration extends Integration {
         per_page: 10
       })
 
+      const sinceTs = this.lastPollTimestamp || Date.now() - 3600_000
+
       for (const repo of repos) {
-        const { data: runs } = await octokit.rest.actions.listWorkflowRunsForRepo({
-          owner: repo.owner.login,
-          repo: repo.name,
-          per_page: 5,
-          created: `>${new Date(this.lastPollTimestamp || Date.now() - 3600_000).toISOString()}`
-        })
-
-        for (const run of runs.workflow_runs) {
-          const severity = run.conclusion === 'failure'
-            ? 'error' as const
-            : run.conclusion === 'success'
-              ? 'success' as const
-              : 'info' as const
-
-          events.push({
-            id: this.generateEventId('github', `run-${run.id}`),
-            source: 'github',
-            severity,
-            title: `${run.name ?? 'Workflow'} ${run.conclusion ?? run.status}`,
-            subtitle: `${repo.full_name} #${run.run_number}`,
-            timestamp: new Date(run.updated_at).getTime(),
-            url: run.html_url,
-            metadata: {
-              repo: repo.full_name,
-              branch: run.head_branch ?? '',
-              workflow: run.name ?? ''
-            },
-            read: false
+        try {
+          const { data: runs } = await octokit.rest.actions.listWorkflowRunsForRepo({
+            owner: repo.owner.login,
+            repo: repo.name,
+            per_page: 5
           })
+
+          for (const run of runs.workflow_runs) {
+            if (new Date(run.updated_at).getTime() < sinceTs) continue
+
+            const severity = run.conclusion === 'failure'
+              ? 'error' as const
+              : run.conclusion === 'success'
+                ? 'success' as const
+                : 'info' as const
+
+            events.push({
+              id: this.generateEventId('github', `run-${run.id}`),
+              source: 'github',
+              severity,
+              title: `${run.name ?? 'Workflow'} ${run.conclusion ?? run.status}`,
+              subtitle: `${repo.full_name} #${run.run_number}`,
+              timestamp: new Date(run.updated_at).getTime(),
+              url: run.html_url,
+              metadata: {
+                repo: repo.full_name,
+                branch: run.head_branch ?? '',
+                workflow: run.name ?? ''
+              },
+              read: false
+            })
+          }
+        } catch (err) {
+          console.error(`[DevPulse] Failed to poll actions for ${repo.full_name}:`, err)
         }
       }
-    } catch {
-      // Skip if workflow polling fails
+    } catch (err) {
+      console.error('[DevPulse] Failed to list repos:', err)
     }
 
     try {
@@ -101,8 +108,8 @@ export class GitHubIntegration extends Integration {
           read: false
         })
       }
-    } catch {
-      // Skip if notification polling fails
+    } catch (err) {
+      console.error('[DevPulse] Failed to poll notifications:', err)
     }
 
     this.lastPollTimestamp = Date.now()

@@ -103,14 +103,14 @@ app.whenReady().then(async () => {
     import('./updater').then(({ initAutoUpdater }) => initAutoUpdater())
   }
 
-  // Hide on blur, but with a delay to avoid Linux WM false-blur issues
+  // Hide on blur, but with a delay to allow click handlers to fire first
   let blurTimeout: ReturnType<typeof setTimeout> | null = null
   mainWindow.on('blur', () => {
     blurTimeout = setTimeout(() => {
       if (mainWindow && !mainWindow.isFocused()) {
         mainWindow.hide()
       }
-    }, 150)
+    }, 300)
   })
   mainWindow.on('focus', () => {
     if (blurTimeout) {

@@ -68,12 +68,15 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   })
 
   ipcMain.handle('shell:open-external', (_event, url: string) => {
+    console.log('[DevPulse] Opening URL:', url)
     return shell.openExternal(url)
   })
 
   ipcMain.handle('auth:save-api-key', (_event, source: EventSource, key: string) => {
     if (key.startsWith('http')) {
       saveCredential(`${source}:url`, key)
+    } else if (key.includes('@')) {
+      saveCredential(`${source}:email`, key)
     } else if (source === 'octopus') {
       saveCredential('octopus:api-key', key)
     } else {
@@ -97,6 +100,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     deleteCredential(`${source}:token`)
     deleteCredential(`${source}:api-key`)
     deleteCredential(`${source}:url`)
+    deleteCredential(`${source}:email`)
     removeIntegrationFromConfig(source)
   })
 

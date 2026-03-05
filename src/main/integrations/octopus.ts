@@ -90,8 +90,8 @@ export class OctopusIntegration extends Integration {
           read: false
         })
       }
-    } catch {
-      // Silently skip
+    } catch (err) {
+      console.error('[DevPulse] Octopus poll failed:', err)
     }
 
     // Poll releases
@@ -120,8 +120,8 @@ export class OctopusIntegration extends Integration {
           read: false
         })
       }
-    } catch {
-      // Silently skip
+    } catch (err) {
+      console.error('[DevPulse] Octopus poll failed:', err)
     }
 
     this.lastPollTimestamp = Date.now()

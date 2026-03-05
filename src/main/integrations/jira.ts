@@ -97,8 +97,8 @@ export class JiraIntegration extends Integration {
           read: false
         })
       }
-    } catch {
-      // Skip on poll failure
+    } catch (err) {
+      console.error('[DevPulse] Jira poll failed:', err)
     }
 
     this.lastPollTimestamp = Date.now()
