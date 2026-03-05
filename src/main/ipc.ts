@@ -4,7 +4,38 @@ import { getConfig, updateConfig } from './store'
 import { saveCredential, deleteCredential, hasCredential } from './auth'
 import { getIntegration } from './integrations/registry'
 import { setAutostart } from './autostart'
-import type { AppConfig, EventSource } from '../shared/types'
+import type { AppConfig, EventSource, IntegrationConfig } from '../shared/types'
+
+let onIntegrationChanged: (() => void) | null = null
+
+export function setIntegrationChangedCallback(cb: () => void): void {
+  onIntegrationChanged = cb
+}
+
+function ensureIntegrationInConfig(source: EventSource): void {
+  const config = getConfig()
+  const exists = config.integrations.some((i) => i.type === source)
+  if (!exists) {
+    const entry: IntegrationConfig = {
+      id: source,
+      type: source,
+      enabled: true,
+      pollIntervalMs: config.general.globalPollIntervalMs,
+      severityThreshold: 'info'
+    }
+    updateConfig({ integrations: [...config.integrations, entry] })
+    onIntegrationChanged?.()
+  }
+}
+
+function removeIntegrationFromConfig(source: EventSource): void {
+  const config = getConfig()
+  const filtered = config.integrations.filter((i) => i.type !== source)
+  if (filtered.length !== config.integrations.length) {
+    updateConfig({ integrations: filtered })
+    onIntegrationChanged?.()
+  }
+}
 
 export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): void {
   ipcMain.handle('events:get', (_event, filter) => {
@@ -41,12 +72,10 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   })
 
   ipcMain.handle('auth:save-api-key', (_event, source: EventSource, key: string) => {
-    if (source === 'octopus') {
-      if (key.startsWith('http')) {
-        saveCredential('octopus:url', key)
-      } else {
-        saveCredential('octopus:api-key', key)
-      }
+    if (key.startsWith('http')) {
+      saveCredential(`${source}:url`, key)
+    } else if (source === 'octopus') {
+      saveCredential('octopus:api-key', key)
     } else {
       saveCredential(`${source}:token`, key)
     }
@@ -57,6 +86,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       const integration = getIntegration(source)
       if (!integration) return { ok: false, error: 'Integration not found' }
       await integration.testConnection()
+      ensureIntegrationInConfig(source)
       return { ok: true }
     } catch (err) {
       return { ok: false, error: String(err) }
@@ -67,6 +97,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     deleteCredential(`${source}:token`)
     deleteCredential(`${source}:api-key`)
     deleteCredential(`${source}:url`)
+    removeIntegrationFromConfig(source)
   })
 
   ipcMain.handle('auth:connected-sources', () => {

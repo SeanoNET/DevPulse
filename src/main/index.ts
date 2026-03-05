@@ -2,7 +2,7 @@ import { app, BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { createTray, updateTrayBadge, getTrayBounds } from './tray'
 import { initDb, closeDb, getUnreadCount } from './db'
-import { registerIpcHandlers } from './ipc'
+import { registerIpcHandlers, setIntegrationChangedCallback } from './ipc'
 import { createScheduler } from './scheduler'
 import { initStore } from './store'
 
@@ -94,6 +94,10 @@ app.whenReady().then(async () => {
 
   const scheduler = createScheduler(() => mainWindow)
   scheduler.start()
+
+  setIntegrationChangedCallback(() => {
+    scheduler.start() // stop + restart with new config
+  })
 
   if (app.isPackaged) {
     import('./updater').then(({ initAutoUpdater }) => initAutoUpdater())
