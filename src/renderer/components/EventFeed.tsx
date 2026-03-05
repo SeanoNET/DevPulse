@@ -50,8 +50,8 @@ export function EventFeed() {
   return (
     <div className="flex flex-col h-full">
       {/* Filter bar */}
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-border">
-        <div className="flex items-center gap-1 flex-1 overflow-x-auto">
+      <div className="px-3 py-2 border-b border-border">
+        <div className="flex items-center gap-1 flex-wrap">
           {SOURCE_FILTERS.map((f) => (
             <button
               key={f.label}
@@ -67,7 +67,7 @@ export function EventFeed() {
               {f.label}
             </button>
           ))}
-          <span className="w-px h-3 bg-border mx-1" />
+          <span className="w-px h-3 bg-border mx-0.5" />
           {SEVERITY_FILTERS.map((f) => (
             <button
               key={f.label}
@@ -83,15 +83,18 @@ export function EventFeed() {
               {f.label}
             </button>
           ))}
+          {unreadCount > 0 && (
+            <>
+              <span className="flex-1" />
+              <button
+                onClick={markAllRead}
+                className="text-[10px] text-muted-foreground hover:text-foreground whitespace-nowrap"
+              >
+                Mark all read
+              </button>
+            </>
+          )}
         </div>
-        {unreadCount > 0 && (
-          <button
-            onClick={markAllRead}
-            className="text-[10px] text-muted-foreground hover:text-foreground whitespace-nowrap"
-          >
-            Mark all read
-          </button>
-        )}
       </div>
 
       {/* Event list */}
