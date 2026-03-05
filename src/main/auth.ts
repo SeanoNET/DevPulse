@@ -3,27 +3,47 @@ import { getRawStore } from './store'
 
 const CREDENTIAL_PREFIX = 'credential:'
 
-export function saveCredential(key: string, value: string): void {
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('OS keychain encryption is not available')
+function canEncrypt(): boolean {
+  try {
+    return safeStorage.isEncryptionAvailable()
+  } catch {
+    return false
   }
+}
+
+export function saveCredential(key: string, value: string): void {
   const store = getRawStore()
   if (!store) throw new Error('Store not initialized')
-  const encrypted = safeStorage.encryptString(value)
-  store.set(`${CREDENTIAL_PREFIX}${key}`, encrypted.toString('base64'))
+
+  if (canEncrypt()) {
+    const encrypted = safeStorage.encryptString(value)
+    store.set(`${CREDENTIAL_PREFIX}${key}`, encrypted.toString('base64'))
+  } else {
+    // Fallback: store as base64 (not encrypted, but functional)
+    store.set(`${CREDENTIAL_PREFIX}${key}`, Buffer.from(value).toString('base64'))
+  }
 }
 
 export function getCredential(key: string): string | null {
-  if (!safeStorage.isEncryptionAvailable()) return null
   const store = getRawStore()
   if (!store) return null
-  const encrypted = store.get(`${CREDENTIAL_PREFIX}${key}`) as string | undefined
-  if (!encrypted) return null
+  const stored = store.get(`${CREDENTIAL_PREFIX}${key}`) as string | undefined
+  if (!stored) return null
+
   try {
-    const buffer = Buffer.from(encrypted, 'base64')
-    return safeStorage.decryptString(buffer)
+    if (canEncrypt()) {
+      const buffer = Buffer.from(stored, 'base64')
+      return safeStorage.decryptString(buffer)
+    } else {
+      return Buffer.from(stored, 'base64').toString('utf-8')
+    }
   } catch {
-    return null
+    // If decryption fails (e.g. was stored unencrypted), try plain base64
+    try {
+      return Buffer.from(stored, 'base64').toString('utf-8')
+    } catch {
+      return null
+    }
   }
 }
 

@@ -160,7 +160,7 @@ export function ConnectionsTab({ connectedSources, onRefresh }: ConnectionsTabPr
                   <button
                     onClick={() => handleConnect(source)}
                     disabled={connecting === source || !tokenInputs[source]?.trim()}
-                    className="text-[11px] px-3 py-1 rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    className="text-[11px] px-3 py-1 rounded bg-foreground text-background hover:opacity-90 disabled:opacity-50"
                   >
                     {connecting === source ? 'Connecting...' : 'Connect'}
                   </button>
