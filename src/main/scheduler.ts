@@ -1,6 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import { getConfig, updateConfig } from './store'
-import { insertEvents, getUnreadCount, getExistingEventIds } from './db'
+import { insertEvents, getUnreadCount, getExistingEventIds, supersedePriorStates } from './db'
 import { updateTrayBadge, updateRunningTasks } from './tray'
 import { dispatchNotification } from './notifications'
 import { notifyEventsUpdated, notifyPollingState } from './ipc'
@@ -113,6 +113,7 @@ async function pollSource(
       const newCount = insertEvents(events)
       if (newCount > 0) {
         const newEvents = events.filter((e) => !existingIds.has(e.id))
+        supersedePriorStates(newEvents)
         dispatchNotification(newEvents)
         updateTrayBadge(getUnreadCount())
         notifyEventsUpdated(getMainWindow())

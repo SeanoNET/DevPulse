@@ -123,6 +123,29 @@ export function getExistingEventIds(ids: string[]): Set<string> {
   return new Set(rows.map((r) => r.id))
 }
 
+/**
+ * When a new event arrives for a run/deployment that already has older state events,
+ * mark the older ones as read so they don't clutter the feed.
+ * Matches event IDs sharing a common prefix before the final state segment.
+ * e.g. github:run-123-1-success supersedes github:run-123-1-in_progress
+ */
+export function supersedePriorStates(events: DevEvent[]): void {
+  const stmt = db.prepare(
+    `UPDATE events SET read = 1 WHERE id LIKE ? AND id != ? AND read = 0`
+  )
+  const update = db.transaction((items: DevEvent[]) => {
+    for (const event of items) {
+      // Extract prefix: everything before the last dash-separated state
+      // e.g. "github:run-12345-1-success" → prefix "github:run-12345-1-"
+      const lastDash = event.id.lastIndexOf('-')
+      if (lastDash <= 0) continue
+      const prefix = event.id.slice(0, lastDash + 1)
+      stmt.run(`${prefix}%`, event.id)
+    }
+  })
+  update(events)
+}
+
 export function deleteEventsBySource(source: string): number {
   const result = db.prepare('DELETE FROM events WHERE source = ?').run(source)
   return result.changes
