@@ -2,6 +2,7 @@ import { autoUpdater } from 'electron-updater'
 import { Notification } from 'electron'
 
 export function initAutoUpdater(): void {
+  autoUpdater.logger = null
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
 

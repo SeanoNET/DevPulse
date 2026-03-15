@@ -12,7 +12,7 @@ export function AboutTab() {
           </div>
           <div>
             <p className="text-sm font-medium">DevPulse</p>
-            <p className="text-[11px] text-muted-foreground">v0.1.0</p>
+            <p className="text-[11px] text-muted-foreground">v0.2.0</p>
           </div>
         </div>
 

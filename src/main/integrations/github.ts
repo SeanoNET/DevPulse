@@ -6,6 +6,8 @@ import type { DevEvent, EventSource } from '../../shared/types'
 export class GitHubIntegration extends Integration {
   readonly source: EventSource = 'github'
   private octokit: Octokit | null = null
+  /** Track last-seen run states to detect re-runs and state transitions */
+  private runStates = new Map<number, string>()
 
   private getOctokit(): Octokit {
     if (this.octokit) return this.octokit
@@ -51,24 +53,40 @@ export class GitHubIntegration extends Integration {
           for (const run of runs.workflow_runs) {
             if (new Date(run.updated_at).getTime() < sinceTs) continue
 
+            const attempt = run.run_attempt ?? 1
+            const stateKey = `${run.conclusion ?? run.status}-${attempt}`
+            const previousState = this.runStates.get(run.id)
+            this.runStates.set(run.id, stateKey)
+
+            // Skip if we've already seen this exact state + attempt
+            if (previousState === stateKey) continue
+
             const severity = run.conclusion === 'failure'
               ? 'error' as const
               : run.conclusion === 'success'
                 ? 'success' as const
-                : 'info' as const
+                : run.status === 'in_progress' || run.status === 'queued'
+                  ? 'warning' as const
+                  : 'info' as const
+
+            const displayTitle = (run as any).display_title || run.head_commit?.message || run.name || 'Workflow'
+            const branch = run.head_branch ?? ''
+            const branchLabel = branch ? ` (${branch})` : ''
+            const status = run.conclusion ?? run.status ?? 'unknown'
 
             events.push({
-              id: this.generateEventId('github', `run-${run.id}`),
+              id: this.generateEventId('github', `run-${run.id}-${attempt}-${status}`),
               source: 'github',
               severity,
-              title: `${run.name ?? 'Workflow'} ${run.conclusion ?? run.status}`,
-              subtitle: `${repo.full_name} #${run.run_number}`,
+              title: displayTitle,
+              subtitle: `${repo.full_name} #${run.run_number}${branchLabel} · ${status}`,
               timestamp: new Date(run.updated_at).getTime(),
               url: run.html_url,
               metadata: {
                 repo: repo.full_name,
-                branch: run.head_branch ?? '',
-                workflow: run.name ?? ''
+                branch,
+                workflow: run.name ?? '',
+                status
               },
               read: false
             })
