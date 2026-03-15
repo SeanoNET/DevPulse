@@ -4,6 +4,7 @@ import type { DevEvent, EventFilter, EventSource, Severity } from '@shared/types
 export function useEvents() {
   const [events, setEvents] = useState<DevEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [polling, setPolling] = useState(false)
   const [filter, setFilter] = useState<EventFilter>({})
   const [unreadCount, setUnreadCount] = useState(0)
 
@@ -47,6 +48,13 @@ export function useEvents() {
     return unsub
   }, [])
 
+  useEffect(() => {
+    const unsub = window.api.onPollingStateChanged((state) => {
+      setPolling(state)
+    })
+    return unsub
+  }, [])
+
   const markRead = useCallback(async (ids: string[]) => {
     await window.api.markRead(ids)
     setEvents((prev) => prev.map((e) => (ids.includes(e.id) ? { ...e, read: true } : e)))
@@ -82,6 +90,7 @@ export function useEvents() {
   return {
     events,
     loading,
+    polling,
     unreadCount,
     filter,
     markRead,

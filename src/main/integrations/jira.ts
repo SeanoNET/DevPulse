@@ -20,7 +20,17 @@ export class JiraIntegration extends Integration {
   private getSiteUrl(): string {
     const url = getCredential('jira:url')
     if (!url) throw new Error('Jira site URL not configured')
-    return url.replace(/\/$/, '')
+    const cleaned = url.replace(/\/$/, '')
+    try {
+      const parsed = new URL(cleaned)
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error('Jira URL must use HTTPS')
+      }
+    } catch (e) {
+      if (e instanceof TypeError) throw new Error('Invalid Jira URL')
+      throw e
+    }
+    return cleaned
   }
 
   private getHeaders(): Record<string, string> {
@@ -76,6 +86,11 @@ export class JiraIntegration extends Integration {
         { headers: this.getHeaders() }
       )
 
+      if (!response.ok) {
+        const text = await response.text()
+        console.error(`[DevPulse] Jira poll returned ${response.status}: ${text.slice(0, 200)}`)
+        return events
+      }
       const data = (await response.json()) as { issues: JiraIssue[] }
 
       for (const issue of data.issues ?? []) {

@@ -1,10 +1,16 @@
 import { ipcMain, shell, BrowserWindow } from 'electron'
-import { getEvents, markRead, markAllRead, getUnreadCount } from './db'
+import { getEvents, markRead, markAllRead, getUnreadCount, deleteEventsBySource, deleteAllEvents } from './db'
 import { getConfig, updateConfig } from './store'
 import { saveCredential, deleteCredential, hasCredential } from './auth'
 import { getIntegration } from './integrations/registry'
 import { setAutostart } from './autostart'
 import type { AppConfig, EventSource, IntegrationConfig } from '../shared/types'
+
+const VALID_SOURCES = new Set(['github', 'jira', 'octopus'])
+
+function isValidSource(source: unknown): source is EventSource {
+  return typeof source === 'string' && VALID_SOURCES.has(source)
+}
 
 let onIntegrationChanged: (() => void) | null = null
 
@@ -38,6 +44,14 @@ function removeIntegrationFromConfig(source: EventSource): void {
 }
 
 export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): void {
+  ipcMain.handle('window:hide', () => {
+    getMainWindow()?.hide()
+  })
+
+  ipcMain.handle('window:minimize', () => {
+    getMainWindow()?.minimize()
+  })
+
   ipcMain.handle('events:get', (_event, filter) => {
     return getEvents(filter)
   })
@@ -56,6 +70,16 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     return getUnreadCount()
   })
 
+  ipcMain.handle('events:clear', (_event, source?: EventSource) => {
+    if (source) {
+      if (!isValidSource(source)) return
+      deleteEventsBySource(source)
+    } else {
+      deleteAllEvents()
+    }
+    notifyEventsUpdated(getMainWindow())
+  })
+
   ipcMain.handle('config:get', () => {
     return getConfig()
   })
@@ -65,14 +89,27 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       setAutostart(config.general.autostart)
     }
     updateConfig(config)
+    if (config.general?.globalPollIntervalMs !== undefined) {
+      onIntegrationChanged?.()
+    }
   })
 
   ipcMain.handle('shell:open-external', (_event, url: string) => {
-    console.log('[DevPulse] Opening URL:', url)
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        console.warn('[DevPulse] Blocked non-HTTP URL:', parsed.protocol)
+        return
+      }
+    } catch {
+      console.warn('[DevPulse] Blocked invalid URL')
+      return
+    }
     return shell.openExternal(url)
   })
 
   ipcMain.handle('auth:save-api-key', (_event, source: EventSource, key: string) => {
+    if (!isValidSource(source) || typeof key !== 'string' || !key.trim()) return
     if (key.startsWith('http')) {
       saveCredential(`${source}:url`, key)
     } else if (key.includes('@')) {
@@ -85,6 +122,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   })
 
   ipcMain.handle('auth:test-connection', async (_event, source: EventSource) => {
+    if (!isValidSource(source)) return { ok: false, error: 'Invalid source' }
     try {
       const integration = getIntegration(source)
       if (!integration) return { ok: false, error: 'Integration not found' }
@@ -97,6 +135,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   })
 
   ipcMain.handle('auth:remove-integration', (_event, source: EventSource) => {
+    if (!isValidSource(source)) return
     deleteCredential(`${source}:token`)
     deleteCredential(`${source}:api-key`)
     deleteCredential(`${source}:url`)
@@ -115,6 +154,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   })
 
   ipcMain.handle('auth:start-oauth', async (_event, source: EventSource) => {
+    if (!isValidSource(source)) throw new Error('Invalid source')
     const integration = getIntegration(source)
     if (!integration) throw new Error(`Unknown integration: ${source}`)
     await integration.authenticate()
@@ -124,6 +164,10 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
 export function notifyEventsUpdated(win: BrowserWindow | null): void {
   win?.webContents.send('events:updated')
   notifyUnreadChanged(win)
+}
+
+export function notifyPollingState(win: BrowserWindow | null, polling: boolean): void {
+  win?.webContents.send('polling:state-changed', polling)
 }
 
 function notifyUnreadChanged(win: BrowserWindow | null): void {

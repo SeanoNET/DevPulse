@@ -1,27 +1,31 @@
-import { app, BrowserWindow, screen } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
-import { createTray, updateTrayBadge, getTrayBounds } from './tray'
-import { initDb, closeDb, getUnreadCount } from './db'
+import { createTray, updateTrayBadge, setQuittingCallback } from './tray'
+import { cleanupIcons } from './tray-icons'
+import { initDb, closeDb, getUnreadCount, pruneOldEvents } from './db'
 import { registerIpcHandlers, setIntegrationChangedCallback } from './ipc'
 import { createScheduler } from './scheduler'
 import { initStore } from './store'
 
 let mainWindow: BrowserWindow | null = null
+let isQuitting = false
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 400,
-    height: 600,
+    width: 480,
+    height: 700,
     show: false,
     frame: false,
-    resizable: false,
-    skipTaskbar: true,
-    transparent: false,
+    resizable: true,
+    skipTaskbar: false,
+    minWidth: 380,
+    minHeight: 400,
+    title: 'DevPulse',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
     }
   })
 
@@ -39,39 +43,8 @@ function toggleWindow() {
   if (mainWindow.isVisible()) {
     mainWindow.hide()
   } else {
-    positionWindowNearTray()
     mainWindow.show()
     mainWindow.focus()
-  }
-}
-
-function positionWindowNearTray() {
-  if (!mainWindow) return
-  const [winW, winH] = mainWindow.getSize()
-  const trayBounds = getTrayBounds()
-  const display = screen.getPrimaryDisplay()
-  const { width: screenW, height: screenH } = display.workAreaSize
-  const workArea = display.workArea
-
-  if (trayBounds && trayBounds.y < screenH / 2) {
-    // Tray is on top — position window below tray icon
-    const x = Math.max(0, Math.min(
-      Math.round(trayBounds.x + trayBounds.width / 2 - winW / 2),
-      screenW - winW
-    ))
-    const y = workArea.y + 8
-    mainWindow.setPosition(x, y)
-  } else if (trayBounds) {
-    // Tray is on bottom — position window above tray icon
-    const x = Math.max(0, Math.min(
-      Math.round(trayBounds.x + trayBounds.width / 2 - winW / 2),
-      screenW - winW
-    ))
-    const y = workArea.y + workArea.height - winH - 8
-    mainWindow.setPosition(x, y)
-  } else {
-    // Fallback: top-right
-    mainWindow.setPosition(screenW - winW - 8, workArea.y + 8)
   }
 }
 
@@ -89,6 +62,7 @@ app.whenReady().then(async () => {
 
   registerIpcHandlers(() => mainWindow)
 
+  setQuittingCallback(() => { isQuitting = true })
   createTray(toggleWindow)
   updateTrayBadge(getUnreadCount())
 
@@ -103,28 +77,28 @@ app.whenReady().then(async () => {
     import('./updater').then(({ initAutoUpdater }) => initAutoUpdater())
   }
 
-  // Hide on blur, but with a delay to allow click handlers to fire first
-  let blurTimeout: ReturnType<typeof setTimeout> | null = null
-  mainWindow.on('blur', () => {
-    blurTimeout = setTimeout(() => {
-      if (mainWindow && !mainWindow.isFocused()) {
-        mainWindow.hide()
-      }
-    }, 300)
-  })
-  mainWindow.on('focus', () => {
-    if (blurTimeout) {
-      clearTimeout(blurTimeout)
-      blurTimeout = null
+  pruneOldEvents()
+
+  // Close button hides to tray instead of quitting
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault()
+      mainWindow?.hide()
     }
+  })
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show()
   })
 })
 
 app.on('window-all-closed', () => {
-  // Don't quit - this is a tray app
+  // Don't quit - tray keeps the app alive
 })
 
 app.on('before-quit', () => {
+  isQuitting = true
+  cleanupIcons()
   closeDb()
 })
 

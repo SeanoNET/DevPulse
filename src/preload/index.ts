@@ -5,6 +5,7 @@ const api: IpcApi = {
   getEvents: (filter) => ipcRenderer.invoke('events:get', filter),
   markRead: (ids) => ipcRenderer.invoke('events:mark-read', ids),
   markAllRead: () => ipcRenderer.invoke('events:mark-all-read'),
+  clearEvents: (source) => ipcRenderer.invoke('events:clear', source),
   getConfig: () => ipcRenderer.invoke('config:get'),
   updateConfig: (config) => ipcRenderer.invoke('config:update', config),
   getUnreadCount: () => ipcRenderer.invoke('events:unread-count'),
@@ -22,11 +23,20 @@ const api: IpcApi = {
     return () => ipcRenderer.removeListener('events:unread-count-changed', handler)
   },
 
+  onPollingStateChanged: (callback) => {
+    const handler = (_: unknown, polling: boolean) => callback(polling)
+    ipcRenderer.on('polling:state-changed', handler)
+    return () => ipcRenderer.removeListener('polling:state-changed', handler)
+  },
+
   startOAuth: (source) => ipcRenderer.invoke('auth:start-oauth', source),
   saveApiKey: (source, key) => ipcRenderer.invoke('auth:save-api-key', source, key),
   testConnection: (source) => ipcRenderer.invoke('auth:test-connection', source),
   removeIntegration: (source) => ipcRenderer.invoke('auth:remove-integration', source),
-  getConnectedSources: () => ipcRenderer.invoke('auth:connected-sources')
+  getConnectedSources: () => ipcRenderer.invoke('auth:connected-sources'),
+
+  hideWindow: () => ipcRenderer.invoke('window:hide'),
+  minimizeWindow: () => ipcRenderer.invoke('window:minimize')
 }
 
 contextBridge.exposeInMainWorld('api', api)

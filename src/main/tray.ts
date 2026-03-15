@@ -1,32 +1,33 @@
-import { Tray, Menu, nativeImage, app } from 'electron'
-import { join } from 'path'
+import { Tray, Menu, app, shell } from 'electron'
+import type { RunningTask } from './integrations/base'
+import { generateIcon, cleanupIcons, type TrayIconState } from './tray-icons'
 
 let tray: Tray | null = null
 let onToggle: (() => void) | null = null
+let currentRunningTasks: RunningTask[] = []
+let setQuitting: (() => void) | null = null
 
-type TrayState = 'normal' | 'error' | 'paused'
+// Animation state
+let animTimer: ReturnType<typeof setInterval> | null = null
+let animFrame = 0
+let currentState: TrayIconState = 'normal'
 
-const iconFiles: Record<TrayState, string> = {
-  normal: 'tray-icon.png',
-  error: 'tray-icon-error.png',
-  paused: 'tray-icon-paused.png'
-}
-
-function getIconPath(state: TrayState): string {
-  if (app.isPackaged) {
-    return join(process.resourcesPath, iconFiles[state])
-  }
-  return join(app.getAppPath(), 'resources', iconFiles[state])
+export function setQuittingCallback(cb: () => void): void {
+  setQuitting = cb
 }
 
 export function createTray(toggleCallback: () => void): void {
   onToggle = toggleCallback
-  const icon = nativeImage.createFromPath(getIconPath('normal'))
-  tray = new Tray(icon.resize({ width: 16, height: 16 }))
+  const icon = generateIcon('normal')
+  tray = new Tray(icon)
   tray.setToolTip('DevPulse')
 
   tray.on('click', () => {
-    onToggle?.()
+    if (currentRunningTasks.length === 1) {
+      shell.openExternal(currentRunningTasks[0].url)
+    } else {
+      onToggle?.()
+    }
   })
 
   updateContextMenu(0)
@@ -35,12 +36,30 @@ export function createTray(toggleCallback: () => void): void {
 function updateContextMenu(unreadCount: number): void {
   if (!tray) return
 
-  const menu = Menu.buildFromTemplate([
+  const menuItems: Electron.MenuItemConstructorOptions[] = [
     {
       label: `DevPulse${unreadCount > 0 ? ` (${unreadCount})` : ''}`,
       enabled: false
     },
-    { type: 'separator' },
+    { type: 'separator' }
+  ]
+
+  if (currentRunningTasks.length > 0) {
+    menuItems.push({
+      label: `▶ ${currentRunningTasks.length} running`,
+      enabled: false
+    })
+    for (const task of currentRunningTasks) {
+      menuItems.push({
+        label: `  ${task.title}`,
+        sublabel: task.subtitle,
+        click: () => shell.openExternal(task.url)
+      })
+    }
+    menuItems.push({ type: 'separator' })
+  }
+
+  menuItems.push(
     {
       label: 'Show/Hide',
       click: () => onToggle?.()
@@ -49,25 +68,63 @@ function updateContextMenu(unreadCount: number): void {
     {
       label: 'Quit',
       click: () => {
+        stopAnimation()
+        cleanupIcons()
+        setQuitting?.()
         app.quit()
       }
     }
-  ])
+  )
 
-  tray.setContextMenu(menu)
+  tray.setContextMenu(Menu.buildFromTemplate(menuItems))
+}
+
+export function updateRunningTasks(tasks: RunningTask[]): void {
+  const wasRunning = currentRunningTasks.length > 0
+  const isRunning = tasks.length > 0
+  currentRunningTasks = tasks
+
+  if (isRunning) {
+    setTrayState('running')
+    const names = tasks.map((t) => t.title).join(', ')
+    tray?.setToolTip(`DevPulse — Running: ${names}`)
+  } else if (wasRunning) {
+    setTrayState('normal')
+    tray?.setToolTip('DevPulse')
+  }
 }
 
 export function updateTrayBadge(count: number): void {
   updateContextMenu(count)
-  setTrayState(count > 0 ? 'normal' : 'normal')
+  if (currentRunningTasks.length === 0) {
+    setTrayState('normal')
+  }
 }
 
-export function getTrayBounds(): Electron.Rectangle | null {
-  return tray?.getBounds() ?? null
+function stopAnimation(): void {
+  if (animTimer) {
+    clearInterval(animTimer)
+    animTimer = null
+  }
 }
 
-export function setTrayState(state: TrayState): void {
-  if (!tray) return
-  const icon = nativeImage.createFromPath(getIconPath(state))
-  tray.setImage(icon.resize({ width: 16, height: 16 }))
+export function setTrayState(state: TrayIconState): void {
+  if (!tray || state === currentState) return
+  currentState = state
+  stopAnimation()
+
+  if (state === 'running') {
+    animFrame = 0
+    tray.setImage(generateIcon('running', 0))
+
+    // Each tick generates a fresh icon written to a unique temp file,
+    // which is required on Linux (AppIndicator caches icons by path).
+    animTimer = setInterval(() => {
+      if (!tray) return
+      animFrame = (animFrame + 1) % 4
+      tray.setImage(generateIcon('running', animFrame))
+    }, 350)
+  } else {
+    tray.setImage(generateIcon(state))
+  }
 }

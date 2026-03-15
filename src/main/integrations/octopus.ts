@@ -1,4 +1,4 @@
-import { Integration, type QuickLink } from './base'
+import { Integration, type QuickLink, type RunningTask } from './base'
 import { getCredential } from '../auth'
 import type { DevEvent, EventSource } from '../../shared/types'
 
@@ -29,14 +29,35 @@ interface OctopusProject {
   Name: string
 }
 
+interface OctopusTask {
+  Id: string
+  Name: string
+  Description: string
+  State: string
+  HasBeenPickedUpByProcessor: boolean
+  Links: { Web: string }
+}
+
 export class OctopusIntegration extends Integration {
   readonly source: EventSource = 'octopus'
   private projectCache = new Map<string, string>()
+  /** Track last-seen deployment states to detect transitions (e.g. Queued → Failed) */
+  private deploymentStates = new Map<string, string>()
 
   private getBaseUrl(): string {
     const url = getCredential('octopus:url')
     if (!url) throw new Error('Octopus Deploy URL not configured')
-    return url.replace(/\/$/, '')
+    const cleaned = url.replace(/\/$/, '')
+    try {
+      const parsed = new URL(cleaned)
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error('Octopus URL must use HTTPS')
+      }
+    } catch (e) {
+      if (e instanceof TypeError) throw new Error('Invalid Octopus Deploy URL')
+      throw e
+    }
+    return cleaned
   }
 
   private getHeaders(): Record<string, string> {
@@ -61,26 +82,42 @@ export class OctopusIntegration extends Integration {
     const baseUrl = this.getBaseUrl()
     const headers = this.getHeaders()
     const events: DevEvent[] = []
+    const isFirstPoll = this.lastPollTimestamp === 0
 
-    // Poll deployments
+    // Poll deployments — detect both new deployments and state transitions
     try {
       const response = await fetch(`${baseUrl}/api/deployments?take=10&skip=0`, { headers })
+      if (!response.ok) throw new Error(`Octopus deployments API returned ${response.status}`)
       const data = (await response.json()) as { Items: OctopusDeployment[] }
 
       for (const dep of data.Items ?? []) {
         const created = new Date(dep.Created).getTime()
-        if (created <= this.lastPollTimestamp && this.lastPollTimestamp > 0) continue
+        const previousState = this.deploymentStates.get(dep.Id)
+        const stateChanged = previousState != null && previousState !== dep.State
+        const isNew = !isFirstPoll && created > this.lastPollTimestamp
+
+        // Track current state for next poll
+        this.deploymentStates.set(dep.Id, dep.State)
+
+        // On first poll, only report actively running/queued deployments (skip completed ones)
+        if (isFirstPoll) {
+          const active = ['executing', 'queued'].includes(dep.State.toLowerCase())
+          if (!active) continue
+        } else if (!isNew && !stateChanged) {
+          continue
+        }
 
         const projectName = await this.resolveProjectName(dep.ProjectId, baseUrl, headers)
         const severity = this.mapDeploymentSeverity(dep.State)
 
+        // Use state in event id so state transitions create new events
         events.push({
-          id: this.generateEventId('octopus', `dep-${dep.Id}`),
+          id: this.generateEventId('octopus', `dep-${dep.Id}-${dep.State}`),
           source: 'octopus',
           severity,
-          title: `Deployment ${dep.State.toLowerCase()}`,
-          subtitle: `${projectName} → ${dep.Name}`,
-          timestamp: created,
+          title: `${projectName} → ${dep.Name}`,
+          subtitle: `Deployment ${dep.State.toLowerCase()}`,
+          timestamp: stateChanged ? Date.now() : created,
           url: dep.Links?.Web ? `${baseUrl}${dep.Links.Web}` : baseUrl,
           metadata: {
             project: projectName,
@@ -91,17 +128,19 @@ export class OctopusIntegration extends Integration {
         })
       }
     } catch (err) {
-      console.error('[DevPulse] Octopus poll failed:', err)
+      console.error('[DevPulse] Octopus deployment poll failed:', err)
     }
 
     // Poll releases
     try {
       const response = await fetch(`${baseUrl}/api/releases?take=10&skip=0`, { headers })
+      if (!response.ok) throw new Error(`Octopus releases API returned ${response.status}`)
       const data = (await response.json()) as { Items: OctopusRelease[] }
 
       for (const release of data.Items ?? []) {
         const assembled = new Date(release.Assembled).getTime()
-        if (assembled <= this.lastPollTimestamp && this.lastPollTimestamp > 0) continue
+        if (assembled <= this.lastPollTimestamp) continue
+        if (isFirstPoll) continue // Don't report old releases on startup
 
         const projectName = await this.resolveProjectName(release.ProjectId, baseUrl, headers)
 
@@ -159,6 +198,35 @@ export class OctopusIntegration extends Integration {
     } catch {
       return projectId
     }
+  }
+
+  async getRunningTasks(): Promise<RunningTask[]> {
+    const baseUrl = this.getBaseUrl()
+    const headers = this.getHeaders()
+    const tasks: RunningTask[] = []
+
+    try {
+      const response = await fetch(
+        `${baseUrl}/api/tasks?states=Queued,Executing&take=20`,
+        { headers }
+      )
+      if (!response.ok) throw new Error(`Octopus tasks API returned ${response.status}`)
+      const data = (await response.json()) as { Items: OctopusTask[] }
+
+      for (const task of data.Items ?? []) {
+        tasks.push({
+          id: task.Id,
+          title: task.Name,
+          subtitle: task.Description,
+          url: task.Links?.Web ? `${baseUrl}${task.Links.Web}` : baseUrl,
+          source: 'octopus'
+        })
+      }
+    } catch (err) {
+      console.error('[DevPulse] Octopus running tasks check failed:', err)
+    }
+
+    return tasks
   }
 
   getQuickLinks(): QuickLink[] {

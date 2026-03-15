@@ -39,12 +39,14 @@ export interface IpcApi {
   getEvents: (filter?: EventFilter) => Promise<DevEvent[]>
   markRead: (ids: string[]) => Promise<void>
   markAllRead: () => Promise<void>
+  clearEvents: (source?: EventSource) => Promise<void>
   getConfig: () => Promise<AppConfig>
   updateConfig: (config: Partial<AppConfig>) => Promise<void>
   getUnreadCount: () => Promise<number>
   openExternal: (url: string) => Promise<void>
   onEventsUpdated: (callback: () => void) => () => void
   onUnreadCountChanged: (callback: (count: number) => void) => () => void
+  onPollingStateChanged: (callback: (polling: boolean) => void) => () => void
 
   // Auth
   startOAuth: (source: EventSource) => Promise<void>
@@ -52,6 +54,10 @@ export interface IpcApi {
   testConnection: (source: EventSource) => Promise<{ ok: boolean; error?: string }>
   removeIntegration: (source: EventSource) => Promise<void>
   getConnectedSources: () => Promise<EventSource[]>
+
+  // Window controls
+  hideWindow: () => Promise<void>
+  minimizeWindow: () => Promise<void>
 }
 
 export interface EventFilter {

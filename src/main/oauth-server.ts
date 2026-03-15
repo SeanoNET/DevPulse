@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'http'
+import { randomBytes } from 'crypto'
 
 interface OAuthCallbackResult {
   code: string
@@ -7,8 +8,11 @@ interface OAuthCallbackResult {
 
 export async function createOAuthCallbackServer(): Promise<{
   port: number
+  expectedState: string
   waitForCallback: () => Promise<OAuthCallbackResult>
 }> {
+  const expectedState = randomBytes(32).toString('hex')
+
   return new Promise((resolveSetup) => {
     let resolveCallback: (result: OAuthCallbackResult) => void
     let server: Server
@@ -31,6 +35,12 @@ export async function createOAuthCallbackServer(): Promise<{
       if (!code || !state) {
         res.writeHead(400)
         res.end('Missing code or state parameter')
+        return
+      }
+
+      if (state !== expectedState) {
+        res.writeHead(403)
+        res.end('Invalid state parameter')
         return
       }
 
@@ -57,6 +67,7 @@ export async function createOAuthCallbackServer(): Promise<{
 
       resolveSetup({
         port,
+        expectedState,
         waitForCallback: () => callbackPromise
       })
     })

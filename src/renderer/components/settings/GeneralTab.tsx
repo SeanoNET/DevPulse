@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import type { AppConfig } from '@shared/types'
+import { Toggle } from '../Toggle'
 
 interface GeneralTabProps {
   config: AppConfig
@@ -20,6 +22,20 @@ const THEME_OPTIONS: { label: string; value: AppConfig['general']['theme'] }[] =
 ]
 
 export function GeneralTab({ config, onUpdate }: GeneralTabProps) {
+  const [clearing, setClearing] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+
+  const handleClearEvents = async () => {
+    if (!confirming) {
+      setConfirming(true)
+      return
+    }
+    setClearing(true)
+    await window.api.clearEvents()
+    setClearing(false)
+    setConfirming(false)
+  }
+
   const updateGeneral = (patch: Partial<AppConfig['general']>) => {
     onUpdate({ general: { ...config.general, ...patch } })
   }
@@ -58,41 +74,48 @@ export function GeneralTab({ config, onUpdate }: GeneralTabProps) {
         </select>
       </label>
 
-      <label className="flex items-center justify-between">
+      <div className="flex items-center justify-between">
         <span className="text-xs">Launch at startup</span>
-        <button
-          onClick={() => updateGeneral({ autostart: !config.general.autostart })}
-          className={`
-            relative w-8 h-4.5 rounded-full transition-colors
-            ${config.general.autostart ? 'bg-[var(--color-severity-success)]' : 'bg-muted'}
-          `}
-        >
-          <span
-            className={`
-              absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform
-              ${config.general.autostart ? 'translate-x-4' : 'translate-x-0.5'}
-            `}
-          />
-        </button>
-      </label>
+        <Toggle
+          checked={config.general.autostart}
+          onChange={() => updateGeneral({ autostart: !config.general.autostart })}
+        />
+      </div>
 
-      <label className="flex items-center justify-between">
+      <div className="flex items-center justify-between">
         <span className="text-xs">Notification sound</span>
-        <button
-          onClick={() => updateGeneral({ notificationSound: !config.general.notificationSound })}
-          className={`
-            relative w-8 h-4.5 rounded-full transition-colors
-            ${config.general.notificationSound ? 'bg-[var(--color-severity-success)]' : 'bg-muted'}
-          `}
-        >
-          <span
-            className={`
-              absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform
-              ${config.general.notificationSound ? 'translate-x-4' : 'translate-x-0.5'}
-            `}
-          />
-        </button>
-      </label>
+        <Toggle
+          checked={config.general.notificationSound}
+          onChange={() => updateGeneral({ notificationSound: !config.general.notificationSound })}
+        />
+      </div>
+
+      <div className="pt-2 border-t border-border">
+        <div className="flex items-center justify-between">
+          <span className="text-xs">Clear event history</span>
+          <div className="flex gap-2">
+            {confirming && (
+              <button
+                onClick={() => setConfirming(false)}
+                className="text-[11px] px-3 py-1 rounded border border-input bg-background hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              onClick={handleClearEvents}
+              disabled={clearing}
+              className={`text-[11px] px-3 py-1 rounded border transition-colors ${
+                confirming
+                  ? 'border-red-500 bg-red-500/10 text-red-400 hover:bg-red-500/20'
+                  : 'border-input bg-background hover:bg-muted'
+              }`}
+            >
+              {clearing ? 'Clearing…' : confirming ? 'Confirm' : 'Clear'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

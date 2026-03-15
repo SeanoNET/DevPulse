@@ -19,9 +19,13 @@ export function saveCredential(key: string, value: string): void {
     const encrypted = safeStorage.encryptString(value)
     store.set(`${CREDENTIAL_PREFIX}${key}`, encrypted.toString('base64'))
   } else {
-    // Fallback: store as base64 (not encrypted, but functional)
+    console.warn('[DevPulse] safeStorage unavailable — credentials stored with base64 encoding only (not encrypted)')
     store.set(`${CREDENTIAL_PREFIX}${key}`, Buffer.from(value).toString('base64'))
   }
+}
+
+export function isEncryptionAvailable(): boolean {
+  return canEncrypt()
 }
 
 export function getCredential(key: string): string | null {

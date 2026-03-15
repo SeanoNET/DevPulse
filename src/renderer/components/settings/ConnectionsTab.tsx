@@ -113,7 +113,7 @@ export function ConnectionsTab({ connectedSources, onRefresh }: ConnectionsTabPr
   return (
     <div className="p-4 space-y-4">
       <h2 className="text-sm font-semibold">Connections</h2>
-      {INTEGRATIONS.map(({ source, label, tokenLabel, tokenPlaceholder, helpUrl, showUrl }) => {
+      {INTEGRATIONS.map(({ source, label, tokenLabel, tokenPlaceholder, helpUrl, showUrl, showEmail }) => {
         const connected = connectedSources.includes(source)
         return (
           <div key={source} className="rounded-lg border border-border p-3 space-y-2">

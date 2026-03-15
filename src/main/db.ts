@@ -116,6 +116,23 @@ function rowToEvent(row: Record<string, unknown>): DevEvent {
   }
 }
 
+export function getExistingEventIds(ids: string[]): Set<string> {
+  if (ids.length === 0) return new Set()
+  const placeholders = ids.map(() => '?').join(',')
+  const rows = db.prepare(`SELECT id FROM events WHERE id IN (${placeholders})`).all(...ids) as { id: string }[]
+  return new Set(rows.map((r) => r.id))
+}
+
+export function deleteEventsBySource(source: string): number {
+  const result = db.prepare('DELETE FROM events WHERE source = ?').run(source)
+  return result.changes
+}
+
+export function deleteAllEvents(): number {
+  const result = db.prepare('DELETE FROM events').run()
+  return result.changes
+}
+
 export function closeDb(): void {
   db?.close()
 }

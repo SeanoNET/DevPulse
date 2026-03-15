@@ -1,10 +1,10 @@
 import type { BrowserWindow } from 'electron'
 import { getConfig, updateConfig } from './store'
-import { insertEvents, getUnreadCount } from './db'
-import { updateTrayBadge } from './tray'
+import { insertEvents, getUnreadCount, getExistingEventIds } from './db'
+import { updateTrayBadge, updateRunningTasks } from './tray'
 import { dispatchNotification } from './notifications'
-import { notifyEventsUpdated } from './ipc'
-import { getIntegration } from './integrations/registry'
+import { notifyEventsUpdated, notifyPollingState } from './ipc'
+import { getIntegration, getAllIntegrations } from './integrations/registry'
 import type { EventSource, IntegrationConfig } from '../shared/types'
 import { hasCredential } from './auth'
 
@@ -90,6 +90,8 @@ export function createScheduler(getMainWindow: () => BrowserWindow | null): Sche
   return { start, stop, pollNow }
 }
 
+let activePollCount = 0
+
 async function pollSource(
   source: EventSource,
   getMainWindow: () => BrowserWindow | null
@@ -98,19 +100,45 @@ async function pollSource(
     const integration = getIntegration(source)
     if (!integration) return
 
+    activePollCount++
+    if (activePollCount === 1) {
+      notifyPollingState(getMainWindow(), true)
+    }
+
     console.log(`[DevPulse] Polling ${source}...`)
     const events = await integration.poll()
     console.log(`[DevPulse] ${source} returned ${events.length} events`)
-    if (events.length === 0) return
-
-    const newCount = insertEvents(events)
-    if (newCount > 0) {
-      const newEvents = events.slice(0, newCount)
-      dispatchNotification(newEvents)
-      updateTrayBadge(getUnreadCount())
-      notifyEventsUpdated(getMainWindow())
+    if (events.length > 0) {
+      const existingIds = getExistingEventIds(events.map((e) => e.id))
+      const newCount = insertEvents(events)
+      if (newCount > 0) {
+        const newEvents = events.filter((e) => !existingIds.has(e.id))
+        dispatchNotification(newEvents)
+        updateTrayBadge(getUnreadCount())
+        notifyEventsUpdated(getMainWindow())
+      }
     }
+
+    // Check all integrations for running tasks and update tray
+    await refreshRunningTasks()
   } catch (err) {
     console.error(`[DevPulse] Poll failed for ${source}:`, err)
+  } finally {
+    activePollCount = Math.max(0, activePollCount - 1)
+    if (activePollCount === 0) {
+      notifyPollingState(getMainWindow(), false)
+    }
+  }
+}
+
+async function refreshRunningTasks(): Promise<void> {
+  try {
+    const integrations = getAllIntegrations()
+    const allRunning = await Promise.all(
+      integrations.map((i) => i.getRunningTasks().catch(() => []))
+    )
+    updateRunningTasks(allRunning.flat())
+  } catch (err) {
+    console.error('[DevPulse] Running tasks check failed:', err)
   }
 }
