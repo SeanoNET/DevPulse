@@ -97,7 +97,8 @@ export class JiraIntegration extends Integration {
     const sinceDate = new Date(sinceMs).toISOString().split('.')[0].replace('T', ' ')
 
     const jiraConfig = getConfig().integrations.find((i) => i.type === 'jira')
-    const projects = jiraConfig?.settings?.jiraProjects ?? []
+    const projects = (jiraConfig?.settings?.jiraProjects ?? [])
+      .filter((k) => /^[A-Za-z][A-Za-z0-9_-]*$/.test(k))
 
     let jql: string
     if (projects.length > 0) {
