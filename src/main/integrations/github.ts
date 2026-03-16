@@ -8,6 +8,8 @@ export class GitHubIntegration extends Integration {
   private octokit: Octokit | null = null
   /** Track last-seen run states to detect re-runs and state transitions */
   private runStates = new Map<number, string>()
+  /** Track in-progress runs so we can check their completion even if they fall out of the top-N poll */
+  private inProgressRuns = new Map<number, { owner: string; repo: string }>()
 
   private getOctokit(): Octokit {
     if (this.octokit) return this.octokit
@@ -41,6 +43,7 @@ export class GitHubIntegration extends Integration {
       })
 
       const sinceTs = this.lastPollTimestamp || Date.now() - 3600_000
+      const seenRunIds = new Set<number>()
 
       for (const repo of repos) {
         try {
@@ -51,6 +54,7 @@ export class GitHubIntegration extends Integration {
           })
 
           for (const run of runs.workflow_runs) {
+            seenRunIds.add(run.id)
             if (new Date(run.updated_at).getTime() < sinceTs) continue
 
             const attempt = run.run_attempt ?? 1
@@ -60,6 +64,14 @@ export class GitHubIntegration extends Integration {
 
             // Skip if we've already seen this exact state + attempt
             if (previousState === stateKey) continue
+
+            // Track or untrack in-progress runs
+            const isTerminal = !!run.conclusion && ['success', 'failure', 'cancelled', 'skipped', 'timed_out'].includes(run.conclusion)
+            if (isTerminal) {
+              this.inProgressRuns.delete(run.id)
+            } else if (run.status === 'in_progress' || run.status === 'queued') {
+              this.inProgressRuns.set(run.id, { owner: repo.owner.login, repo: repo.name })
+            }
 
             const severity = run.conclusion === 'failure'
               ? 'error' as const
@@ -93,6 +105,61 @@ export class GitHubIntegration extends Integration {
           }
         } catch (err) {
           console.error(`[DevPulse] Failed to poll actions for ${repo.full_name}:`, err)
+        }
+      }
+
+      // Check tracked in-progress runs that weren't in this poll's results
+      for (const [runId, tracked] of this.inProgressRuns) {
+        if (seenRunIds.has(runId)) continue
+        try {
+          const { data: run } = await octokit.rest.actions.getWorkflowRun({
+            owner: tracked.owner,
+            repo: tracked.repo,
+            run_id: runId
+          })
+          const attempt = run.run_attempt ?? 1
+          const stateKey = `${run.conclusion ?? run.status}-${attempt}`
+          const previousState = this.runStates.get(run.id)
+          this.runStates.set(run.id, stateKey)
+
+          if (previousState === stateKey) continue
+
+          const isTerminal = ['success', 'failure', 'cancelled', 'skipped', 'timed_out'].includes(run.conclusion ?? '')
+          if (isTerminal) {
+            this.inProgressRuns.delete(runId)
+          }
+
+          const severity = run.conclusion === 'failure'
+            ? 'error' as const
+            : run.conclusion === 'success'
+              ? 'success' as const
+              : run.status === 'in_progress' || run.status === 'queued'
+                ? 'warning' as const
+                : 'info' as const
+
+          const displayTitle = (run as any).display_title || run.head_commit?.message || run.name || 'Workflow'
+          const branch = run.head_branch ?? ''
+          const branchLabel = branch ? ` (${branch})` : ''
+          const status = run.conclusion ?? run.status ?? 'unknown'
+
+          events.push({
+            id: this.generateEventId('github', `run-${run.id}-${attempt}-${status}`),
+            source: 'github',
+            severity,
+            title: displayTitle,
+            subtitle: `${tracked.owner}/${tracked.repo} #${run.run_number}${branchLabel} · ${status}`,
+            timestamp: new Date(run.updated_at).getTime(),
+            url: run.html_url,
+            metadata: {
+              repo: `${tracked.owner}/${tracked.repo}`,
+              branch,
+              workflow: run.name ?? '',
+              status
+            },
+            read: false
+          })
+        } catch (err) {
+          console.error(`[DevPulse] Failed to check tracked run ${runId}:`, err)
         }
       }
     } catch (err) {
@@ -132,6 +199,10 @@ export class GitHubIntegration extends Integration {
 
     this.lastPollTimestamp = Date.now()
     return events
+  }
+
+  hasActiveItems(): boolean {
+    return this.inProgressRuns.size > 0
   }
 
   getQuickLinks(): QuickLink[] {

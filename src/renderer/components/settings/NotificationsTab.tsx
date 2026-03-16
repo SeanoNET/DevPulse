@@ -13,12 +13,28 @@ const SEVERITY_OPTIONS: { label: string; value: Severity }[] = [
   { label: 'Errors only', value: 'error' }
 ]
 
+const DURATION_OPTIONS: { label: string; value: number }[] = [
+  { label: '5 seconds', value: 5_000 },
+  { label: '10 seconds', value: 10_000 },
+  { label: '15 seconds', value: 15_000 },
+  { label: '30 seconds', value: 30_000 }
+]
+
 export function NotificationsTab({ config, onUpdate }: NotificationsTabProps) {
   const toggleEnabled = () => {
     onUpdate({
       notifications: {
         ...config.notifications,
         enabled: !config.notifications.enabled
+      }
+    })
+  }
+
+  const updateDuration = (durationMs: number) => {
+    onUpdate({
+      notifications: {
+        ...config.notifications,
+        notificationDurationMs: durationMs
       }
     })
   }
@@ -37,6 +53,21 @@ export function NotificationsTab({ config, onUpdate }: NotificationsTabProps) {
       <div className="flex items-center justify-between">
         <span className="text-xs">Desktop notifications</span>
         <Toggle checked={config.notifications.enabled} onChange={toggleEnabled} />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="text-xs">Notification duration</span>
+        <select
+          value={config.notifications.notificationDurationMs || 10_000}
+          onChange={(e) => updateDuration(Number(e.target.value))}
+          className="text-[11px] px-2 py-1 rounded border border-input bg-background"
+        >
+          {DURATION_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {config.integrations.length > 0 && (

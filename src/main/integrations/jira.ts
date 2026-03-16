@@ -1,5 +1,6 @@
 import { Integration, type QuickLink } from './base'
 import { getCredential } from '../auth'
+import { getConfig } from '../store'
 import type { DevEvent, EventSource } from '../../shared/types'
 
 interface JiraIssue {
@@ -71,6 +72,23 @@ export class JiraIntegration extends Integration {
     }
   }
 
+  async listProjects(): Promise<{ key: string; name: string }[]> {
+    const siteUrl = this.getSiteUrl()
+    const headers = this.getHeaders()
+    try {
+      const response = await fetch(`${siteUrl}/rest/api/3/project`, { headers })
+      if (!response.ok) {
+        console.error(`[DevPulse] Jira projects fetch returned ${response.status}`)
+        return []
+      }
+      const data = (await response.json()) as { key: string; name: string }[]
+      return data.map((p) => ({ key: p.key, name: p.name }))
+    } catch (err) {
+      console.error('[DevPulse] Failed to fetch Jira projects:', err)
+      return []
+    }
+  }
+
   async poll(): Promise<DevEvent[]> {
     const siteUrl = this.getSiteUrl()
     const events: DevEvent[] = []
@@ -78,7 +96,16 @@ export class JiraIntegration extends Integration {
     const sinceMs = this.lastPollTimestamp || Date.now() - 3600_000
     const sinceDate = new Date(sinceMs).toISOString().split('.')[0].replace('T', ' ')
 
-    const jql = `assignee = currentUser() AND updated >= "${sinceDate}" ORDER BY updated DESC`
+    const jiraConfig = getConfig().integrations.find((i) => i.type === 'jira')
+    const projects = jiraConfig?.settings?.jiraProjects ?? []
+
+    let jql: string
+    if (projects.length > 0) {
+      const projectList = projects.map((k) => `"${k}"`).join(',')
+      jql = `project IN (${projectList}) AND (assignee = currentUser() OR reporter = currentUser()) AND updated >= "${sinceDate}" ORDER BY updated DESC`
+    } else {
+      jql = `assignee = currentUser() AND updated >= "${sinceDate}" ORDER BY updated DESC`
+    }
 
     try {
       const response = await fetch(

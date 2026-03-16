@@ -14,6 +14,9 @@ interface SchedulerHandle {
   pollNow: (source?: EventSource) => Promise<void>
 }
 
+/** Track which integrations are in fast-poll mode */
+const activePolling = new Map<EventSource, boolean>()
+
 /**
  * Ensure any connected source that has credentials but is missing from
  * config.integrations gets added automatically (handles upgrades / edge cases).
@@ -48,6 +51,16 @@ function syncConnectedSources(): void {
 export function createScheduler(getMainWindow: () => BrowserWindow | null): SchedulerHandle {
   const timers = new Map<string, ReturnType<typeof setInterval>>()
 
+  function scheduleSource(source: EventSource, intervalMs: number): void {
+    const existing = timers.get(source)
+    if (existing) clearInterval(existing)
+
+    const timer = setInterval(() => {
+      pollSource(source, getMainWindow)
+    }, intervalMs)
+    timers.set(source, timer)
+  }
+
   function start(): void {
     stop()
     syncConnectedSources()
@@ -58,12 +71,7 @@ export function createScheduler(getMainWindow: () => BrowserWindow | null): Sche
 
       const interval = integration.pollIntervalMs || config.general.globalPollIntervalMs
       pollSource(integration.type, getMainWindow)
-
-      const timer = setInterval(() => {
-        pollSource(integration.type, getMainWindow)
-      }, interval)
-
-      timers.set(integration.type, timer)
+      scheduleSource(integration.type, interval)
     }
   }
 
@@ -72,6 +80,11 @@ export function createScheduler(getMainWindow: () => BrowserWindow | null): Sche
       clearInterval(timer)
     }
     timers.clear()
+    activePolling.clear()
+  }
+
+  function reschedule(source: EventSource, intervalMs: number): void {
+    scheduleSource(source, intervalMs)
   }
 
   async function pollNow(source?: EventSource): Promise<void> {
@@ -87,8 +100,13 @@ export function createScheduler(getMainWindow: () => BrowserWindow | null): Sche
     }
   }
 
+  // Expose reschedule for adaptive polling
+  schedulerReschedule = reschedule
+
   return { start, stop, pollNow }
 }
+
+let schedulerReschedule: ((source: EventSource, intervalMs: number) => void) | null = null
 
 let activePollCount = 0
 
@@ -122,6 +140,25 @@ async function pollSource(
 
     // Check all integrations for running tasks and update tray
     await refreshRunningTasks()
+
+    // Adaptive polling: speed up when there are active items (skip Jira)
+    if (source !== 'jira' && schedulerReschedule) {
+      const config = getConfig()
+      const hasActive = integration.hasActiveItems()
+      const wasActive = activePolling.get(source) ?? false
+
+      if (hasActive && !wasActive) {
+        const fastInterval = config.general.fastPollIntervalMs || 15_000
+        schedulerReschedule(source, fastInterval)
+        activePolling.set(source, true)
+        console.log(`[DevPulse] ${source} has active items — fast polling at ${fastInterval}ms`)
+      } else if (!hasActive && wasActive) {
+        const normalInterval = config.general.globalPollIntervalMs || 60_000
+        schedulerReschedule(source, normalInterval)
+        activePolling.set(source, false)
+        console.log(`[DevPulse] ${source} no active items — normal polling at ${normalInterval}ms`)
+      }
+    }
   } catch (err) {
     console.error(`[DevPulse] Poll failed for ${source}:`, err)
   } finally {

@@ -1,10 +1,12 @@
-import { useState } from 'react'
-import type { EventSource } from '@shared/types'
+import { useState, useEffect } from 'react'
+import type { AppConfig, EventSource } from '@shared/types'
 import { SourceIcon } from '../SourceIcon'
 
 interface ConnectionsTabProps {
   connectedSources: EventSource[]
   onRefresh: () => void
+  config: AppConfig
+  onUpdate: (partial: Partial<AppConfig>) => void
 }
 
 const INTEGRATIONS: {
@@ -42,7 +44,69 @@ const INTEGRATIONS: {
   }
 ]
 
-export function ConnectionsTab({ connectedSources, onRefresh }: ConnectionsTabProps) {
+function JiraProjectSelector({ config, onUpdate }: { config: AppConfig; onUpdate: (partial: Partial<AppConfig>) => void }) {
+  const [projects, setProjects] = useState<{ key: string; name: string }[]>([])
+  const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+
+  const jiraConfig = config.integrations.find((i) => i.type === 'jira')
+  const selectedProjects: string[] = jiraConfig?.settings?.jiraProjects ?? []
+
+  useEffect(() => {
+    if (expanded && projects.length === 0) {
+      setLoading(true)
+      window.api.listJiraProjects()
+        .then(setProjects)
+        .finally(() => setLoading(false))
+    }
+  }, [expanded])
+
+  const toggleProject = (key: string) => {
+    const updated = selectedProjects.includes(key)
+      ? selectedProjects.filter((k) => k !== key)
+      : [...selectedProjects, key]
+
+    const updatedIntegrations = config.integrations.map((i) =>
+      i.type === 'jira' ? { ...i, settings: { ...i.settings, jiraProjects: updated } } : i
+    )
+    onUpdate({ integrations: updatedIntegrations })
+  }
+
+  return (
+    <div className="space-y-1 pt-1 border-t border-border mt-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+      >
+        <span className={`transition-transform ${expanded ? 'rotate-90' : ''}`}>▶</span>
+        Projects {selectedProjects.length > 0 && `(${selectedProjects.length} selected)`}
+      </button>
+      {expanded && (
+        <div className="space-y-1 pl-3 max-h-32 overflow-y-auto">
+          {loading && <p className="text-[10px] text-muted-foreground">Loading projects...</p>}
+          {!loading && projects.length === 0 && <p className="text-[10px] text-muted-foreground">No projects found</p>}
+          {projects.map((p) => (
+            <label key={p.key} className="flex items-center gap-2 text-[11px] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectedProjects.includes(p.key)}
+                onChange={() => toggleProject(p.key)}
+                className="rounded border-input"
+              />
+              <span>{p.key}</span>
+              <span className="text-muted-foreground">— {p.name}</span>
+            </label>
+          ))}
+          {selectedProjects.length === 0 && !loading && projects.length > 0 && (
+            <p className="text-[10px] text-muted-foreground mt-1">No filter — monitoring all assigned issues</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function ConnectionsTab({ connectedSources, onRefresh, config, onUpdate }: ConnectionsTabProps) {
   const [tokenInputs, setTokenInputs] = useState<Record<string, string>>({})
   const [urlInputs, setUrlInputs] = useState<Record<string, string>>({})
   const [emailInputs, setEmailInputs] = useState<Record<string, string>>({})
@@ -197,6 +261,10 @@ export function ConnectionsTab({ connectedSources, onRefresh }: ConnectionsTabPr
               <p className={`text-[11px] ${feedback.ok ? 'text-[var(--color-severity-success)]' : 'text-destructive'}`}>
                 {feedback.message}
               </p>
+            )}
+
+            {source === 'jira' && connected && (
+              <JiraProjectSelector config={config} onUpdate={onUpdate} />
             )}
           </div>
         )

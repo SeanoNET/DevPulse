@@ -1,4 +1,4 @@
-import { Tray, Menu, app, shell } from 'electron'
+import { Tray, Menu, app, shell, nativeTheme } from 'electron'
 import type { RunningTask } from './integrations/base'
 import { generateIcon, cleanupIcons, type TrayIconState } from './tray-icons'
 
@@ -31,6 +31,17 @@ export function createTray(toggleCallback: () => void): void {
   })
 
   updateContextMenu(0)
+
+  nativeTheme.on('updated', () => {
+    // Re-render current icon with new theme colors
+    if (tray) {
+      if (currentState === 'running') {
+        tray.setImage(generateIcon('running', animFrame))
+      } else {
+        tray.setImage(generateIcon(currentState))
+      }
+    }
+  })
 }
 
 function updateContextMenu(unreadCount: number): void {

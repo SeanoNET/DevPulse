@@ -43,6 +43,8 @@ export class OctopusIntegration extends Integration {
   private projectCache = new Map<string, string>()
   /** Track last-seen deployment states to detect transitions (e.g. Queued → Failed) */
   private deploymentStates = new Map<string, string>()
+  /** Track in-progress deployments so we can check their completion even if they fall out of the top-N poll */
+  private inProgressDeployments = new Map<string, void>()
 
   private getBaseUrl(): string {
     const url = getCredential('octopus:url')
@@ -85,12 +87,14 @@ export class OctopusIntegration extends Integration {
     const isFirstPoll = this.lastPollTimestamp === 0
 
     // Poll deployments — detect both new deployments and state transitions
+    const seenDepIds = new Set<string>()
     try {
       const response = await fetch(`${baseUrl}/api/deployments?take=10&skip=0`, { headers })
       if (!response.ok) throw new Error(`Octopus deployments API returned ${response.status}`)
       const data = (await response.json()) as { Items: OctopusDeployment[] }
 
       for (const dep of data.Items ?? []) {
+        seenDepIds.add(dep.Id)
         const created = new Date(dep.Created).getTime()
         const previousState = this.deploymentStates.get(dep.Id)
         const stateChanged = previousState != null && previousState !== dep.State
@@ -99,10 +103,18 @@ export class OctopusIntegration extends Integration {
         // Track current state for next poll
         this.deploymentStates.set(dep.Id, dep.State)
 
+        // Track or untrack in-progress deployments
+        const isActive = ['executing', 'queued'].includes(dep.State.toLowerCase())
+        const isTerminalDep = ['success', 'failed', 'timedout', 'canceled'].includes(dep.State.toLowerCase())
+        if (isActive) {
+          this.inProgressDeployments.set(dep.Id, undefined)
+        } else if (isTerminalDep) {
+          this.inProgressDeployments.delete(dep.Id)
+        }
+
         // On first poll, only report actively running/queued deployments (skip completed ones)
         if (isFirstPoll) {
-          const active = ['executing', 'queued'].includes(dep.State.toLowerCase())
-          if (!active) continue
+          if (!isActive) continue
         } else if (!isNew && !stateChanged) {
           continue
         }
@@ -129,6 +141,48 @@ export class OctopusIntegration extends Integration {
       }
     } catch (err) {
       console.error('[DevPulse] Octopus deployment poll failed:', err)
+    }
+
+    // Check tracked in-progress deployments that weren't in this poll's results
+    for (const [depId] of this.inProgressDeployments) {
+      if (seenDepIds.has(depId)) continue
+      try {
+        const response = await fetch(`${baseUrl}/api/deployments/${depId}`, { headers })
+        if (!response.ok) continue
+        const dep = (await response.json()) as OctopusDeployment
+
+        const previousState = this.deploymentStates.get(dep.Id)
+        const stateChanged = previousState != null && previousState !== dep.State
+        this.deploymentStates.set(dep.Id, dep.State)
+
+        const isTerminalDep = ['success', 'failed', 'timedout', 'canceled'].includes(dep.State.toLowerCase())
+        if (isTerminalDep) {
+          this.inProgressDeployments.delete(depId)
+        }
+
+        if (!stateChanged) continue
+
+        const projectName = await this.resolveProjectName(dep.ProjectId, baseUrl, headers)
+        const severity = this.mapDeploymentSeverity(dep.State)
+
+        events.push({
+          id: this.generateEventId('octopus', `dep-${dep.Id}-${dep.State}`),
+          source: 'octopus',
+          severity,
+          title: `${projectName} → ${dep.Name}`,
+          subtitle: `Deployment ${dep.State.toLowerCase()}`,
+          timestamp: Date.now(),
+          url: dep.Links?.Web ? `${baseUrl}${dep.Links.Web}` : baseUrl,
+          metadata: {
+            project: projectName,
+            environment: dep.Name,
+            state: dep.State
+          },
+          read: false
+        })
+      } catch (err) {
+        console.error(`[DevPulse] Failed to check tracked deployment ${depId}:`, err)
+      }
     }
 
     // Poll releases
@@ -227,6 +281,10 @@ export class OctopusIntegration extends Integration {
     }
 
     return tasks
+  }
+
+  hasActiveItems(): boolean {
+    return this.inProgressDeployments.size > 0
   }
 
   getQuickLinks(): QuickLink[] {

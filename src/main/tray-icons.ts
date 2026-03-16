@@ -1,4 +1,4 @@
-import { nativeImage, app, type NativeImage } from 'electron'
+import { nativeImage, nativeTheme, app, type NativeImage } from 'electron'
 import { deflateSync } from 'zlib'
 import { join } from 'path'
 import { writeFileSync, mkdirSync, existsSync, rmSync } from 'fs'
@@ -125,11 +125,21 @@ class PixelBuffer {
 
 // --- Heartbeat waveform geometry ---
 
-const COLORS: Record<string, RGBA> = {
-  normal:  { r: 220, g: 220, b: 220, a: 255 },
-  error:   { r: 239, g: 68,  b: 68,  a: 255 },
-  running: { r: 34,  g: 197, b: 94,  a: 255 },
-  paused:  { r: 115, g: 115, b: 115, a: 200 }
+function getColor(state: string): RGBA {
+  switch (state) {
+    case 'normal':
+      return nativeTheme.shouldUseDarkColors
+        ? { r: 220, g: 220, b: 220, a: 255 }
+        : { r: 50,  g: 50,  b: 50,  a: 255 }
+    case 'error':
+      return { r: 239, g: 68,  b: 68,  a: 255 }
+    case 'running':
+      return { r: 34,  g: 197, b: 94,  a: 255 }
+    case 'paused':
+      return { r: 115, g: 115, b: 115, a: 200 }
+    default:
+      return { r: 220, g: 220, b: 220, a: 255 }
+  }
 }
 
 function heartbeatPoints(peakScale = 1.0): [number, number][] {
@@ -195,7 +205,7 @@ export type TrayIconState = 'normal' | 'error' | 'running' | 'paused'
 
 function renderIcon(state: TrayIconState, frame = 0): Buffer {
   const buf = new PixelBuffer(SIZE, SIZE)
-  const color = COLORS[state]
+  const color = getColor(state)
 
   let pts: [number, number][]
 
