@@ -18,6 +18,15 @@ Download from the [latest release](https://github.com/SeanoNET/DevPulse/releases
   sudo dpkg -i DevPulse-*.deb
   ```
 
+### Arch Linux
+
+Download the AppImage from the [latest release](https://github.com/SeanoNET/DevPulse/releases/latest) and place it somewhere on your `PATH`:
+
+```bash
+wget https://github.com/SeanoNET/DevPulse/releases/latest/download/DevPulse-*-x64.AppImage -O ~/.local/bin/DevPulse.AppImage
+chmod +x ~/.local/bin/DevPulse.AppImage
+```
+
 ### Windows
 
 Download `DevPulse-Setup-x.x.x.exe` from the [latest release](https://github.com/SeanoNET/DevPulse/releases/latest) and run the installer.
@@ -54,7 +63,26 @@ Download `DevPulse-Setup-x.x.x.exe` from the [latest release](https://github.com
 - **Filter events** by source (GitHub, Jira, Octopus) or severity (Errors, Warnings)
 - **Mark all read** to clear the unread indicators
 - **Settings > General** to change poll interval, enable autostart, or toggle notification sounds
-- **Settings > Notifications** to configure notification preferences
+- **Settings > Notifications** to configure notification preferences and display duration
+
+## Autostart on Login
+
+DevPulse has a built-in autostart toggle in **Settings > General** which creates a `.desktop` entry in `~/.config/autostart/`.
+
+To set it up manually (e.g. on Arch Linux with an AppImage):
+
+```bash
+mkdir -p ~/.config/autostart
+cat > ~/.config/autostart/devpulse.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=DevPulse
+Exec=$HOME/.local/bin/DevPulse.AppImage
+X-GNOME-Autostart-enabled=true
+EOF
+```
+
+Adjust the `Exec` path to wherever you placed the AppImage.
 
 ## Development
 
