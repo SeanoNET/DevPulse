@@ -13,6 +13,11 @@ const SEVERITY_OPTIONS: { label: string; value: Severity }[] = [
   { label: 'Errors only', value: 'error' }
 ]
 
+const STYLE_OPTIONS: { label: string; value: AppConfig['notifications']['style'] }[] = [
+  { label: 'Custom panels', value: 'custom' },
+  { label: 'System native', value: 'native' }
+]
+
 const DURATION_OPTIONS: { label: string; value: number }[] = [
   { label: '5 seconds', value: 5_000 },
   { label: '10 seconds', value: 10_000 },
@@ -54,6 +59,23 @@ export function NotificationsTab({ config, onUpdate }: NotificationsTabProps) {
         <span className="text-xs">Desktop notifications</span>
         <Toggle checked={config.notifications.enabled} onChange={toggleEnabled} />
       </div>
+
+      <label className="flex items-center justify-between">
+        <span className="text-xs">Notification style</span>
+        <select
+          value={config.notifications.style || 'custom'}
+          onChange={(e) => onUpdate({
+            notifications: { ...config.notifications, style: e.target.value as AppConfig['notifications']['style'] }
+          })}
+          className="text-[11px] px-2 py-1 rounded border border-input bg-background"
+        >
+          {STYLE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <div className="flex items-center justify-between">
         <span className="text-xs">Notification duration</span>

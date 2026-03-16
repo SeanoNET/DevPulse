@@ -36,6 +36,9 @@ const api: IpcApi = {
   getConnectedSources: () => ipcRenderer.invoke('auth:connected-sources'),
   listJiraProjects: () => ipcRenderer.invoke('jira:list-projects'),
 
+  getVersion: () => ipcRenderer.invoke('app:version'),
+  checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
+
   hideWindow: () => ipcRenderer.invoke('window:hide'),
   minimizeWindow: () => ipcRenderer.invoke('window:minimize')
 }

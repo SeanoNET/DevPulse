@@ -12,7 +12,8 @@ const defaults: AppConfig = {
   notifications: {
     enabled: true,
     groupingWindowMs: 5_000,
-    notificationDurationMs: 10_000
+    notificationDurationMs: 10_000,
+    style: 'custom' as const
   }
 }
 

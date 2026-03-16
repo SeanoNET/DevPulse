@@ -1,4 +1,29 @@
+import { useEffect, useState } from 'react'
+
+type UpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'available' | 'error'
+
 export function AboutTab() {
+  const [version, setVersion] = useState<string>('')
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle')
+  const [updateVersion, setUpdateVersion] = useState<string>('')
+  const [updateError, setUpdateError] = useState<string>('')
+
+  useEffect(() => {
+    window.api.getVersion().then(setVersion)
+  }, [])
+
+  const handleCheckForUpdates = async () => {
+    setUpdateStatus('checking')
+    setUpdateError('')
+    const result = await window.api.checkForUpdates()
+    if (result.status === 'available') {
+      setUpdateVersion(result.version ?? '')
+    } else if (result.status === 'error') {
+      setUpdateError(result.error ?? 'Unknown error')
+    }
+    setUpdateStatus(result.status)
+  }
+
   return (
     <div className="p-4 space-y-4">
       <h2 className="text-sm font-semibold">About</h2>
@@ -12,7 +37,7 @@ export function AboutTab() {
           </div>
           <div>
             <p className="text-sm font-medium">DevPulse</p>
-            <p className="text-[11px] text-muted-foreground">v0.3.0</p>
+            {version && <p className="text-[11px] text-muted-foreground">v{version}</p>}
           </div>
         </div>
 
@@ -20,6 +45,35 @@ export function AboutTab() {
           Unified CI/CD event timeline for developers. Aggregates events from
           GitHub, Jira, and Octopus Deploy into a single notification feed.
         </p>
+      </div>
+
+      <div className="pt-2 border-t border-border space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs">Updates</span>
+          <button
+            onClick={handleCheckForUpdates}
+            disabled={updateStatus === 'checking'}
+            className="text-[11px] px-3 py-1 rounded border border-input bg-background hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            {updateStatus === 'checking' ? 'Checking...' : 'Check for updates'}
+          </button>
+        </div>
+
+        {updateStatus === 'up-to-date' && (
+          <p className="text-[11px] text-muted-foreground">You're on the latest version.</p>
+        )}
+
+        {updateStatus === 'available' && (
+          <p className="text-[11px] text-[var(--color-severity-info)]">
+            v{updateVersion} is available — it will download in the background.
+          </p>
+        )}
+
+        {updateStatus === 'error' && (
+          <p className="text-[11px] text-[var(--color-severity-error)]">
+            {updateError}
+          </p>
+        )}
       </div>
 
       <div className="space-y-1">

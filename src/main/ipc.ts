@@ -1,4 +1,4 @@
-import { ipcMain, shell, BrowserWindow } from 'electron'
+import { app, ipcMain, shell, BrowserWindow } from 'electron'
 import { getEvents, markRead, markAllRead, getUnreadCount, deleteEventsBySource, deleteAllEvents } from './db'
 import { getConfig, updateConfig } from './store'
 import { saveCredential, deleteCredential, hasCredential } from './auth'
@@ -44,6 +44,19 @@ function removeIntegrationFromConfig(source: EventSource): void {
 }
 
 export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): void {
+  ipcMain.handle('app:version', () => {
+    return app.getVersion()
+  })
+
+  ipcMain.handle('app:check-for-updates', async () => {
+    try {
+      const { checkForUpdates } = await import('./updater')
+      return await checkForUpdates()
+    } catch (err) {
+      return { status: 'error' as const, error: String(err) }
+    }
+  })
+
   ipcMain.handle('window:hide', () => {
     getMainWindow()?.hide()
   })

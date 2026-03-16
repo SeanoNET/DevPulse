@@ -37,6 +37,7 @@ export interface AppConfig {
     enabled: boolean
     groupingWindowMs: number
     notificationDurationMs: number
+    style: 'native' | 'custom'
   }
 }
 
@@ -60,6 +61,10 @@ export interface IpcApi {
   removeIntegration: (source: EventSource) => Promise<void>
   getConnectedSources: () => Promise<EventSource[]>
   listJiraProjects: () => Promise<{ key: string; name: string }[]>
+
+  // App info
+  getVersion: () => Promise<string>
+  checkForUpdates: () => Promise<{ status: 'up-to-date' | 'available' | 'error'; version?: string; error?: string }>
 
   // Window controls
   hideWindow: () => Promise<void>
