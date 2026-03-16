@@ -159,6 +159,12 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     if (!integration) throw new Error(`Unknown integration: ${source}`)
     await integration.authenticate()
   })
+
+  ipcMain.handle('jira:list-projects', async () => {
+    const integration = getIntegration('jira')
+    if (!integration) return []
+    return (integration as any).listProjects()
+  })
 }
 
 export function notifyEventsUpdated(win: BrowserWindow | null): void {

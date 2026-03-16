@@ -1,7 +1,7 @@
-import { Notification, shell } from 'electron'
 import type { DevEvent } from '../shared/types'
 import { getConfig } from './store'
 import { severityAtOrAbove } from '../shared/severity'
+import { showSingleNotification, showGroupedNotification } from './notification-window'
 
 interface PendingGroup {
   source: string
@@ -53,54 +53,10 @@ function flushGroup(key: string): void {
   const { events } = group
 
   if (events.length === 1) {
-    showSingle(events[0])
+    showSingleNotification(events[0])
   } else if (events.length <= 5) {
-    for (const event of events) showSingle(event)
+    for (const event of events) showSingleNotification(event)
   } else {
-    showGrouped(key, events)
+    showGroupedNotification(key, events)
   }
-}
-
-function showSingle(event: DevEvent): void {
-  const notification = new Notification({
-    title: `${sourceLabel(event.source)}: ${event.title}`,
-    body: event.subtitle,
-    silent: !getConfig().general.notificationSound
-  })
-
-  notification.on('click', () => {
-    shell.openExternal(event.url)
-  })
-
-  notification.show()
-}
-
-function showGrouped(source: string, events: DevEvent[]): void {
-  const errorCount = events.filter((e) => e.severity === 'error').length
-  const body = errorCount > 0
-    ? `${events.length} events (${errorCount} errors)`
-    : `${events.length} new events`
-
-  const notification = new Notification({
-    title: `${sourceLabel(source)} Updates`,
-    body,
-    silent: !getConfig().general.notificationSound
-  })
-
-  notification.on('click', () => {
-    if (events.length > 0) {
-      shell.openExternal(events[0].url)
-    }
-  })
-
-  notification.show()
-}
-
-function sourceLabel(source: string): string {
-  const labels: Record<string, string> = {
-    github: 'GitHub',
-    jira: 'Jira',
-    octopus: 'Octopus'
-  }
-  return labels[source] ?? source
 }

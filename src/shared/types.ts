@@ -19,6 +19,9 @@ export interface IntegrationConfig {
   enabled: boolean
   pollIntervalMs: number
   severityThreshold: Severity
+  settings?: {
+    jiraProjects?: string[]
+  }
 }
 
 export interface AppConfig {
@@ -28,10 +31,12 @@ export interface AppConfig {
     theme: 'system' | 'dark' | 'light'
     notificationSound: boolean
     globalPollIntervalMs: number
+    fastPollIntervalMs: number
   }
   notifications: {
     enabled: boolean
     groupingWindowMs: number
+    notificationDurationMs: number
   }
 }
 
@@ -54,6 +59,7 @@ export interface IpcApi {
   testConnection: (source: EventSource) => Promise<{ ok: boolean; error?: string }>
   removeIntegration: (source: EventSource) => Promise<void>
   getConnectedSources: () => Promise<EventSource[]>
+  listJiraProjects: () => Promise<{ key: string; name: string }[]>
 
   // Window controls
   hideWindow: () => Promise<void>

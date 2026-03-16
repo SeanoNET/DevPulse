@@ -51,7 +51,7 @@ export function Settings() {
       </div>
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'connections' && (
-          <ConnectionsTab connectedSources={connectedSources} onRefresh={refresh} />
+          <ConnectionsTab connectedSources={connectedSources} onRefresh={refresh} config={config} onUpdate={update} />
         )}
         {activeTab === 'notifications' && (
           <NotificationsTab config={config} onUpdate={update} />

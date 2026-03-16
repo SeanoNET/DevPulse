@@ -6,11 +6,13 @@ const defaults: AppConfig = {
     autostart: false,
     theme: 'system',
     notificationSound: true,
-    globalPollIntervalMs: 60_000
+    globalPollIntervalMs: 60_000,
+    fastPollIntervalMs: 15_000
   },
   notifications: {
     enabled: true,
-    groupingWindowMs: 5_000
+    groupingWindowMs: 5_000,
+    notificationDurationMs: 10_000
   }
 }
 

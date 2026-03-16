@@ -34,6 +34,7 @@ const api: IpcApi = {
   testConnection: (source) => ipcRenderer.invoke('auth:test-connection', source),
   removeIntegration: (source) => ipcRenderer.invoke('auth:remove-integration', source),
   getConnectedSources: () => ipcRenderer.invoke('auth:connected-sources'),
+  listJiraProjects: () => ipcRenderer.invoke('jira:list-projects'),
 
   hideWindow: () => ipcRenderer.invoke('window:hide'),
   minimizeWindow: () => ipcRenderer.invoke('window:minimize')

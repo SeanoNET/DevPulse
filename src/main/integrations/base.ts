@@ -28,6 +28,11 @@ export abstract class Integration {
     return []
   }
 
+  /** Override to report whether this integration has in-progress items */
+  hasActiveItems(): boolean {
+    return false
+  }
+
   protected generateEventId(source: EventSource, externalId: string): string {
     return `${source}:${externalId}`
   }
