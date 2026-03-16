@@ -135,6 +135,9 @@ export function showNotificationWindow(data: NotificationData): void {
 
   win.once('ready-to-show', () => {
     win.showInactive()
+    // Wayland compositors (Sway/Hyprland) ignore initial x/y hints.
+    // Force position after the window is mapped.
+    win.setPosition(pos.x, pos.y, false)
   })
 
   win.webContents.on('will-navigate', (e) => {
