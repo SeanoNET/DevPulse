@@ -1,4 +1,5 @@
 import { BrowserWindow, screen, shell } from 'electron'
+import { execFile } from 'child_process'
 import type { DevEvent } from '../shared/types'
 import { getConfig } from './store'
 
@@ -9,6 +10,8 @@ const SCREEN_MARGIN = 12
 
 /** Track active notification windows for stacking */
 const activeWindows: BrowserWindow[] = []
+
+let notifCounter = 0
 
 interface NotificationData {
   title: string
@@ -38,6 +41,37 @@ const SOURCE_COLORS: Record<string, string> = {
   octopus: '#2f93e0'
 }
 
+/** Detect which Wayland compositor is running (if any) */
+function getCompositor(): 'sway' | 'hyprland' | null {
+  if (process.env.SWAYSOCK) return 'sway'
+  if (process.env.HYPRLAND_INSTANCE_SIGNATURE) return 'hyprland'
+  return null
+}
+
+/** Move a window via compositor IPC (Sway/Hyprland) */
+function compositorMove(windowTitle: string, x: number, y: number): void {
+  const compositor = getCompositor()
+  if (!compositor) return
+
+  if (compositor === 'sway') {
+    execFile('swaymsg', [
+      `[title="^${windowTitle}$"]`,
+      'move', 'position', `${x}`, `${y}`
+    ], (err) => {
+      if (err) console.error('[DevPulse] swaymsg move failed:', err.message)
+    })
+  } else if (compositor === 'hyprland') {
+    // Find window by title and move it
+    execFile('hyprctl', [
+      'dispatch', 'movewindowpixel',
+      `exact ${x} ${y}`,
+      `title:^${windowTitle}$`
+    ], (err) => {
+      if (err) console.error('[DevPulse] hyprctl move failed:', err.message)
+    })
+  }
+}
+
 function buildNotificationHtml(data: NotificationData): string {
   const severityColor = SEVERITY_COLORS[data.severity] || SEVERITY_COLORS.info
   const sourceColor = SOURCE_COLORS[data.source] || '#8b949e'
@@ -50,10 +84,10 @@ function buildNotificationHtml(data: NotificationData): string {
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1e1e2e;color:#cdd6f4;overflow:hidden;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:default;user-select:none}
-.n{display:flex;height:100%;min-height:80px;animation:s .2s ease-out}
-.sb{width:4px;flex-shrink:0;border-radius:8px 0 0 8px;background:${severityColor}}
+html{background:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:transparent;color:#cdd6f4;overflow:hidden;cursor:default;user-select:none;padding:4px}
+.n{display:flex;height:calc(100% - 8px);min-height:80px;animation:s .2s ease-out;background:#1e1e2e;border-radius:10px;border:1px solid rgba(255,255,255,0.1);box-shadow:0 4px 20px rgba(0,0,0,0.5)}
+.sb{width:4px;flex-shrink:0;border-radius:10px 0 0 10px;background:${severityColor}}
 .ia{display:flex;align-items:center;justify-content:center;width:44px;flex-shrink:0;opacity:.8;color:${sourceColor}}
 .ia svg{width:20px;height:20px}
 .c{flex:1;padding:10px 8px 10px 0;display:flex;flex-direction:column;justify-content:center;min-width:0}
@@ -81,9 +115,23 @@ function getWindowPosition(index: number): { x: number; y: number } {
   const { width, height } = display.workAreaSize
   const { x: workX, y: workY } = display.workArea
 
+  // On Wayland, workArea may not account for panels like waybar.
+  // Use a generous bottom margin to stay clear of panel bars.
+  const BOTTOM_MARGIN = 48
+
   return {
     x: workX + width - WINDOW_WIDTH - SCREEN_MARGIN,
-    y: workY + height - (WINDOW_HEIGHT + WINDOW_GAP) * (index + 1)
+    y: workY + height - (WINDOW_HEIGHT + WINDOW_GAP) * (index + 1) - BOTTOM_MARGIN
+  }
+}
+
+function repositionWindow(win: BrowserWindow, pos: { x: number; y: number }): void {
+  if (win.isDestroyed()) return
+
+  if (getCompositor()) {
+    compositorMove(win.getTitle(), pos.x, pos.y)
+  } else {
+    win.setPosition(pos.x, pos.y, false)
   }
 }
 
@@ -93,9 +141,7 @@ function removeFromStack(win: BrowserWindow): void {
     activeWindows.splice(idx, 1)
     for (let i = idx; i < activeWindows.length; i++) {
       const pos = getWindowPosition(i)
-      if (!activeWindows[i].isDestroyed()) {
-        activeWindows[i].setPosition(pos.x, pos.y, false)
-      }
+      repositionWindow(activeWindows[i], pos)
     }
   }
 }
@@ -105,12 +151,14 @@ export function showNotificationWindow(data: NotificationData): void {
   const durationMs = config.notifications.notificationDurationMs || 10_000
 
   const pos = getWindowPosition(activeWindows.length)
+  const windowTitle = `devpulse-notif-${notifCounter++}`
 
   const win = new BrowserWindow({
     width: WINDOW_WIDTH,
     height: WINDOW_HEIGHT,
     x: pos.x,
     y: pos.y,
+    title: windowTitle,
     frame: false,
     resizable: false,
     movable: false,
@@ -136,9 +184,11 @@ export function showNotificationWindow(data: NotificationData): void {
 
   win.once('ready-to-show', () => {
     win.showInactive()
-    // Wayland compositors (Sway/Hyprland) ignore initial x/y hints.
-    // Force position after the window is mapped.
-    win.setPosition(pos.x, pos.y, false)
+    // On Wayland, compositors ignore Electron's x/y positioning.
+    // Use compositor IPC (swaymsg/hyprctl) to move the window.
+    if (getCompositor()) {
+      setTimeout(() => compositorMove(windowTitle, pos.x, pos.y), 50)
+    }
   })
 
   win.webContents.on('will-navigate', (e) => {
