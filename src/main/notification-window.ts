@@ -3,7 +3,7 @@ import type { DevEvent } from '../shared/types'
 import { getConfig } from './store'
 
 const WINDOW_WIDTH = 360
-const WINDOW_HEIGHT = 100
+const WINDOW_HEIGHT = 120
 const WINDOW_GAP = 8
 const SCREEN_MARGIN = 12
 
@@ -50,14 +50,15 @@ function buildNotificationHtml(data: NotificationData): string {
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1e1e2e;color:#cdd6f4;overflow:hidden;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:default;user-select:none}
 .n{display:flex;height:100%;min-height:80px;animation:s .2s ease-out}
 .sb{width:4px;flex-shrink:0;border-radius:8px 0 0 8px;background:${severityColor}}
 .ia{display:flex;align-items:center;justify-content:center;width:44px;flex-shrink:0;opacity:.8;color:${sourceColor}}
 .ia svg{width:20px;height:20px}
 .c{flex:1;padding:10px 8px 10px 0;display:flex;flex-direction:column;justify-content:center;min-width:0}
-.t{font-size:12px;font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.b{font-size:11px;color:#a6adc8;line-height:1.3;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t{font-size:12px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.b{font-size:11px;color:#a6adc8;line-height:1.3;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
 .x{position:absolute;top:6px;right:8px;width:18px;height:18px;border:none;background:none;color:#6c7086;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:4px;line-height:1}
 .x:hover{color:#cdd6f4;background:rgba(255,255,255,0.1)}
 .n:hover{background:rgba(255,255,255,0.03)}

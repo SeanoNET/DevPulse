@@ -67,13 +67,13 @@ Download `DevPulse-Setup-x.x.x.exe` from the [latest release](https://github.com
 
 ## Autostart on Login
 
-DevPulse has a built-in autostart toggle in **Settings > General** which creates a `.desktop` entry in `~/.config/autostart/`.
+DevPulse has a built-in autostart toggle in **Settings > General** which creates a `.desktop` entry in `~/.config/autostart/`. This works on desktop environments that support XDG autostart (GNOME, KDE, XFCE) and with tools like `dex`.
 
-To set it up manually (e.g. on Arch Linux with an AppImage):
+### XDG Autostart (GNOME, KDE, XFCE, or Sway/Hyprland with `dex`)
 
 ```bash
 mkdir -p ~/.config/autostart
-cat > ~/.config/autostart/devpulse.desktop << 'EOF'
+cat > ~/.config/autostart/devpulse.desktop << EOF
 [Desktop Entry]
 Type=Application
 Name=DevPulse
@@ -82,7 +82,23 @@ X-GNOME-Autostart-enabled=true
 EOF
 ```
 
-Adjust the `Exec` path to wherever you placed the AppImage.
+> **Note:** The `Exec` path must be an absolute path. `.desktop` files do not expand shell variables like `$HOME` or `~`. If you use `dex --autostart` in your Sway/Hyprland config, this method works.
+
+### Sway / Hyprland (without `dex`)
+
+Tiling Wayland compositors don't read `~/.config/autostart/` by default. Add an `exec` line to your compositor config instead:
+
+**Sway** (`~/.config/sway/config`):
+```
+exec ~/.local/bin/DevPulse.AppImage
+```
+
+**Hyprland** (`~/.config/hypr/hyprland.conf`):
+```
+exec-once = ~/.local/bin/DevPulse.AppImage
+```
+
+Adjust the path to wherever you placed the AppImage.
 
 ## Development
 

@@ -44,6 +44,7 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.exe
+            release/*.yml
           if-no-files-found: ignore
 
   release:
