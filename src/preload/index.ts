@@ -38,6 +38,12 @@ const api: IpcApi = {
 
   getVersion: () => ipcRenderer.invoke('app:version'),
   checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
+  installUpdate: () => ipcRenderer.invoke('app:install-update'),
+  onUpdateDownloaded: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('app:update-downloaded', handler)
+    return () => ipcRenderer.removeListener('app:update-downloaded', handler)
+  },
 
   hideWindow: () => ipcRenderer.invoke('window:hide'),
   minimizeWindow: () => ipcRenderer.invoke('window:minimize')

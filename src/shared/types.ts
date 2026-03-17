@@ -65,6 +65,8 @@ export interface IpcApi {
   // App info
   getVersion: () => Promise<string>
   checkForUpdates: () => Promise<{ status: 'up-to-date' | 'available' | 'error'; version?: string; error?: string }>
+  installUpdate: () => Promise<void>
+  onUpdateDownloaded: (callback: () => void) => () => void
 
   // Window controls
   hideWindow: () => Promise<void>

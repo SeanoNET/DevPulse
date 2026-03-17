@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-type UpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'available' | 'error'
+type UpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloaded' | 'error'
 
 export function AboutTab() {
   const [version, setVersion] = useState<string>('')
@@ -10,13 +10,16 @@ export function AboutTab() {
 
   useEffect(() => {
     window.api.getVersion().then(setVersion)
+    return window.api.onUpdateDownloaded(() => {
+      setUpdateStatus('downloaded')
+    })
   }, [])
 
   const handleCheckForUpdates = async () => {
     setUpdateStatus('checking')
     setUpdateError('')
     const result = await window.api.checkForUpdates()
-    if (result.status === 'available') {
+    if (result.status === 'available' || result.status === 'downloaded') {
       setUpdateVersion(result.version ?? '')
     } else if (result.status === 'error') {
       setUpdateError(result.error ?? 'Unknown error')
@@ -65,8 +68,22 @@ export function AboutTab() {
 
         {updateStatus === 'available' && (
           <p className="text-[11px] text-[var(--color-severity-info)]">
-            v{updateVersion} is available — it will download in the background.
+            v{updateVersion} is available — downloading in the background.
           </p>
+        )}
+
+        {updateStatus === 'downloaded' && (
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] text-[var(--color-severity-success)]">
+              v{updateVersion} is ready to install.
+            </p>
+            <button
+              onClick={() => window.api.installUpdate()}
+              className="text-[11px] px-3 py-1 rounded border border-green-600 bg-green-600/10 text-green-400 hover:bg-green-600/20 transition-colors"
+            >
+              Restart now
+            </button>
+          </div>
         )}
 
         {updateStatus === 'error' && (

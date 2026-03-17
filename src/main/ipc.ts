@@ -57,6 +57,11 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     }
   })
 
+  ipcMain.handle('app:install-update', async () => {
+    const { installUpdate } = await import('./updater')
+    installUpdate()
+  })
+
   ipcMain.handle('window:hide', () => {
     getMainWindow()?.hide()
   })

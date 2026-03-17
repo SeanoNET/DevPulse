@@ -1,5 +1,12 @@
 import { autoUpdater } from 'electron-updater'
+import { BrowserWindow } from 'electron'
 import { showAppNotification } from './notifications'
+
+let updateDownloaded = false
+
+export function isUpdateDownloaded(): boolean {
+  return updateDownloaded
+}
 
 export function initAutoUpdater(): void {
   autoUpdater.logger = {
@@ -22,11 +29,15 @@ export function initAutoUpdater(): void {
   })
 
   autoUpdater.on('update-downloaded', () => {
+    updateDownloaded = true
     showAppNotification(
       'DevPulse Update Ready',
       'Restart to apply the update.',
       'success'
     )
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('app:update-downloaded')
+    }
   })
 
   // Check on launch and every 4 hours
@@ -40,8 +51,12 @@ export function initAutoUpdater(): void {
   }, 4 * 60 * 60 * 1000)
 }
 
+export function installUpdate(): void {
+  autoUpdater.quitAndInstall()
+}
+
 export async function checkForUpdates(): Promise<{
-  status: 'up-to-date' | 'available' | 'error'
+  status: 'up-to-date' | 'available' | 'downloaded' | 'error'
   version?: string
   error?: string
 }> {
@@ -50,6 +65,9 @@ export async function checkForUpdates(): Promise<{
     if (result && result.updateInfo) {
       const current = autoUpdater.currentVersion.toString()
       if (result.updateInfo.version !== current) {
+        if (updateDownloaded) {
+          return { status: 'downloaded', version: result.updateInfo.version }
+        }
         return { status: 'available', version: result.updateInfo.version }
       }
     }
