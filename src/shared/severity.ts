@@ -3,8 +3,8 @@ import type { Severity } from './types'
 const SEVERITY_ORDER: Record<Severity, number> = {
   error: 3,
   warning: 2,
-  info: 1,
-  success: 0
+  success: 1,
+  info: 0
 }
 
 export function severityAtOrAbove(event: Severity, threshold: Severity): boolean {

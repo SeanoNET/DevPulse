@@ -44,45 +44,72 @@ const INTEGRATIONS: {
   }
 ]
 
-function JiraProjectSelector({ config, onUpdate }: { config: AppConfig; onUpdate: (partial: Partial<AppConfig>) => void }) {
+const EVENT_TYPE_OPTIONS: { value: 'assigned' | 'reported' | 'watching'; label: string }[] = [
+  { value: 'assigned', label: 'Assigned to me' },
+  { value: 'reported', label: 'Reported by me' },
+  { value: 'watching', label: 'Watching' }
+]
+
+function JiraEventSettings({ config, onUpdate }: { config: AppConfig; onUpdate: (partial: Partial<AppConfig>) => void }) {
   const [projects, setProjects] = useState<{ key: string; name: string }[]>([])
   const [loading, setLoading] = useState(false)
-  const [expanded, setExpanded] = useState(false)
 
   const jiraConfig = config.integrations.find((i) => i.type === 'jira')
   const selectedProjects: string[] = jiraConfig?.settings?.jiraProjects ?? []
+  const selectedEventTypes: ('assigned' | 'reported' | 'watching')[] = jiraConfig?.settings?.jiraEventTypes ?? ['assigned', 'reported', 'watching']
 
   useEffect(() => {
-    if (expanded && projects.length === 0) {
+    if (projects.length === 0) {
       setLoading(true)
       window.api.listJiraProjects()
         .then(setProjects)
         .finally(() => setLoading(false))
     }
-  }, [expanded])
+  }, [])
+
+  const updateSettings = (settings: Partial<{ jiraProjects: string[]; jiraEventTypes: ('assigned' | 'reported' | 'watching')[] }>) => {
+    const updatedIntegrations = config.integrations.map((i) =>
+      i.type === 'jira' ? { ...i, settings: { ...i.settings, ...settings } } : i
+    )
+    onUpdate({ integrations: updatedIntegrations })
+  }
 
   const toggleProject = (key: string) => {
     const updated = selectedProjects.includes(key)
       ? selectedProjects.filter((k) => k !== key)
       : [...selectedProjects, key]
+    updateSettings({ jiraProjects: updated })
+  }
 
-    const updatedIntegrations = config.integrations.map((i) =>
-      i.type === 'jira' ? { ...i, settings: { ...i.settings, jiraProjects: updated } } : i
-    )
-    onUpdate({ integrations: updatedIntegrations })
+  const toggleEventType = (type: 'assigned' | 'reported' | 'watching') => {
+    const updated = selectedEventTypes.includes(type)
+      ? selectedEventTypes.filter((t) => t !== type)
+      : [...selectedEventTypes, type]
+    updateSettings({ jiraEventTypes: updated.length > 0 ? updated : ['assigned'] })
   }
 
   return (
-    <div className="space-y-1 pt-1 border-t border-border mt-2">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1"
-      >
-        <span className={`transition-transform ${expanded ? 'rotate-90' : ''}`}>▶</span>
-        Projects {selectedProjects.length > 0 && `(${selectedProjects.length} selected)`}
-      </button>
-      {expanded && (
-        <div className="space-y-1 pl-3 max-h-32 overflow-y-auto">
+    <div className="space-y-3 pt-2 border-t border-border mt-2">
+      <p className="text-xs font-medium text-foreground">Filter Jira Events</p>
+
+      <div className="space-y-1.5">
+        <p className="text-[11px] text-muted-foreground">Event types:</p>
+        {EVENT_TYPE_OPTIONS.map(({ value, label }) => (
+          <label key={value} className="flex items-center gap-2 text-[11px] cursor-pointer pl-1">
+            <input
+              type="checkbox"
+              checked={selectedEventTypes.includes(value)}
+              onChange={() => toggleEventType(value)}
+              className="rounded border-input"
+            />
+            <span>{label}</span>
+          </label>
+        ))}
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="text-[11px] text-muted-foreground">Projects: <span className="text-[10px]">(none = all)</span></p>
+        <div className="space-y-1 pl-1 max-h-32 overflow-y-auto">
           {loading && <p className="text-[10px] text-muted-foreground">Loading projects...</p>}
           {!loading && projects.length === 0 && <p className="text-[10px] text-muted-foreground">No projects found</p>}
           {projects.map((p) => (
@@ -97,11 +124,8 @@ function JiraProjectSelector({ config, onUpdate }: { config: AppConfig; onUpdate
               <span className="text-muted-foreground">— {p.name}</span>
             </label>
           ))}
-          {selectedProjects.length === 0 && !loading && projects.length > 0 && (
-            <p className="text-[10px] text-muted-foreground mt-1">No filter — monitoring all assigned issues</p>
-          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -264,7 +288,7 @@ export function ConnectionsTab({ connectedSources, onRefresh, config, onUpdate }
             )}
 
             {source === 'jira' && connected && (
-              <JiraProjectSelector config={config} onUpdate={onUpdate} />
+              <JiraEventSettings config={config} onUpdate={onUpdate} />
             )}
           </div>
         )

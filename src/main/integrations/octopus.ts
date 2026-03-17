@@ -38,6 +38,15 @@ interface OctopusTask {
   Links: { Web: string }
 }
 
+const DEPLOY_LABELS: Record<string, string> = {
+  queued: 'Deployment queued',
+  executing: 'Deployment started',
+  success: 'Deployment succeeded',
+  failed: 'Deployment failed',
+  timedout: 'Deployment timed out',
+  canceled: 'Deployment cancelled'
+}
+
 export class OctopusIntegration extends Integration {
   readonly source: EventSource = 'octopus'
   private projectCache = new Map<string, string>()
@@ -128,7 +137,7 @@ export class OctopusIntegration extends Integration {
           source: 'octopus',
           severity,
           title: `${projectName} → ${dep.Name}`,
-          subtitle: `Deployment ${dep.State.toLowerCase()}`,
+          subtitle: DEPLOY_LABELS[dep.State.toLowerCase()] ?? `Deployment ${dep.State.toLowerCase()}`,
           timestamp: stateChanged ? Date.now() : created,
           url: dep.Links?.Web ? `${baseUrl}${dep.Links.Web}` : baseUrl,
           metadata: {
@@ -170,7 +179,7 @@ export class OctopusIntegration extends Integration {
           source: 'octopus',
           severity,
           title: `${projectName} → ${dep.Name}`,
-          subtitle: `Deployment ${dep.State.toLowerCase()}`,
+          subtitle: DEPLOY_LABELS[dep.State.toLowerCase()] ?? `Deployment ${dep.State.toLowerCase()}`,
           timestamp: Date.now(),
           url: dep.Links?.Web ? `${baseUrl}${dep.Links.Web}` : baseUrl,
           metadata: {

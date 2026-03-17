@@ -7,8 +7,8 @@ interface NotificationsTabProps {
 }
 
 const SEVERITY_OPTIONS: { label: string; value: Severity }[] = [
-  { label: 'All events', value: 'success' },
-  { label: 'Info and above', value: 'info' },
+  { label: 'All events', value: 'info' },
+  { label: 'Success and above', value: 'success' },
   { label: 'Warnings and errors', value: 'warning' },
   { label: 'Errors only', value: 'error' }
 ]

@@ -21,6 +21,7 @@ export interface IntegrationConfig {
   severityThreshold: Severity
   settings?: {
     jiraProjects?: string[]
+    jiraEventTypes?: ('assigned' | 'reported' | 'watching')[]
   }
 }
 

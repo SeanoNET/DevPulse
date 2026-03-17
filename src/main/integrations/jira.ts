@@ -17,6 +17,17 @@ interface JiraIssue {
 
 export class JiraIntegration extends Integration {
   readonly source: EventSource = 'jira'
+  private accountId: string | null = null
+
+  private async resolveAccountId(): Promise<string> {
+    if (this.accountId) return this.accountId
+    const siteUrl = this.getSiteUrl()
+    const response = await fetch(`${siteUrl}/rest/api/3/myself`, { headers: this.getHeaders() })
+    if (!response.ok) throw new Error(`Failed to resolve Jira user: ${response.status}`)
+    const data = (await response.json()) as { accountId: string }
+    this.accountId = data.accountId
+    return this.accountId
+  }
 
   private getSiteUrl(): string {
     const url = getCredential('jira:url')
@@ -93,24 +104,36 @@ export class JiraIntegration extends Integration {
     const siteUrl = this.getSiteUrl()
     const events: DevEvent[] = []
 
-    const sinceMs = this.lastPollTimestamp || Date.now() - 3600_000
-    const sinceDate = new Date(sinceMs).toISOString().split('.')[0].replace('T', ' ')
+    const sinceMs = this.lastPollTimestamp || Date.now() - 86_400_000
+    const d = new Date(sinceMs)
+    const sinceDate = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
     const jiraConfig = getConfig().integrations.find((i) => i.type === 'jira')
     const projects = (jiraConfig?.settings?.jiraProjects ?? [])
       .filter((k) => /^[A-Za-z][A-Za-z0-9_-]*$/.test(k))
 
+    const accountId = await this.resolveAccountId()
+    const eventTypes = jiraConfig?.settings?.jiraEventTypes ?? ['assigned', 'reported', 'watching']
+    const userClauses: string[] = []
+    if (eventTypes.includes('assigned')) userClauses.push(`assignee = "${accountId}"`)
+    if (eventTypes.includes('reported')) userClauses.push(`reporter = "${accountId}"`)
+    if (eventTypes.includes('watching')) userClauses.push(`watcher = "${accountId}"`)
+    if (userClauses.length === 0) userClauses.push(`assignee = "${accountId}"`)
+    const userFilter = `(${userClauses.join(' OR ')})`
+
     let jql: string
     if (projects.length > 0) {
       const projectList = projects.map((k) => `"${k}"`).join(',')
-      jql = `project IN (${projectList}) AND (assignee = currentUser() OR reporter = currentUser()) AND updated >= "${sinceDate}" ORDER BY updated DESC`
+      jql = `project IN (${projectList}) AND ${userFilter} AND updated >= "${sinceDate}" ORDER BY updated DESC`
     } else {
-      jql = `assignee = currentUser() AND updated >= "${sinceDate}" ORDER BY updated DESC`
+      jql = `${userFilter} AND updated >= "${sinceDate}" ORDER BY updated DESC`
     }
+
+    console.log(`[DevPulse] Jira JQL: ${jql}`)
 
     try {
       const response = await fetch(
-        `${siteUrl}/rest/api/3/search?jql=${encodeURIComponent(jql)}&maxResults=20`,
+        `${siteUrl}/rest/api/3/search?jql=${encodeURIComponent(jql)}&maxResults=50`,
         { headers: this.getHeaders() }
       )
 

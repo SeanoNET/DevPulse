@@ -3,6 +3,16 @@ import { Integration, type QuickLink } from './base'
 import { getCredential } from '../auth'
 import type { DevEvent, EventSource } from '../../shared/types'
 
+const STATUS_LABELS: Record<string, string> = {
+  queued: 'Queued',
+  in_progress: 'Build started',
+  success: 'Build succeeded',
+  failure: 'Build failed',
+  cancelled: 'Cancelled',
+  skipped: 'Skipped',
+  timed_out: 'Timed out'
+}
+
 export class GitHubIntegration extends Integration {
   readonly source: EventSource = 'github'
   private octokit: Octokit | null = null
@@ -91,7 +101,7 @@ export class GitHubIntegration extends Integration {
               source: 'github',
               severity,
               title: displayTitle,
-              subtitle: `${repo.full_name} #${run.run_number}${branchLabel} · ${status}`,
+              subtitle: `${repo.full_name} #${run.run_number}${branchLabel} · ${STATUS_LABELS[status] ?? status}`,
               timestamp: new Date(run.updated_at).getTime(),
               url: run.html_url,
               metadata: {
@@ -147,7 +157,7 @@ export class GitHubIntegration extends Integration {
             source: 'github',
             severity,
             title: displayTitle,
-            subtitle: `${tracked.owner}/${tracked.repo} #${run.run_number}${branchLabel} · ${status}`,
+            subtitle: `${tracked.owner}/${tracked.repo} #${run.run_number}${branchLabel} · ${STATUS_LABELS[status] ?? status}`,
             timestamp: new Date(run.updated_at).getTime(),
             url: run.html_url,
             metadata: {
