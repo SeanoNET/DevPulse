@@ -207,6 +207,53 @@ export class GitHubIntegration extends Integration {
       console.error('[DevPulse] Failed to poll notifications:', err)
     }
 
+    // Poll releases
+    try {
+      const { data: repos } = await octokit.rest.repos.listForAuthenticatedUser({
+        sort: 'pushed',
+        per_page: 10
+      })
+
+      const sinceTs = this.lastPollTimestamp || Date.now() - 3600_000
+
+      for (const repo of repos) {
+        try {
+          const { data: releases } = await octokit.rest.repos.listReleases({
+            owner: repo.owner.login,
+            repo: repo.name,
+            per_page: 5
+          })
+
+          for (const release of releases) {
+            const publishedAt = release.published_at ?? release.created_at
+            if (!publishedAt) continue
+            const ts = new Date(publishedAt).getTime()
+            if (ts <= sinceTs) continue
+
+            events.push({
+              id: this.generateEventId('github', `release-${release.id}`),
+              source: 'github',
+              severity: release.prerelease ? 'info' : 'success',
+              title: `${release.name || release.tag_name}${release.prerelease ? ' (pre-release)' : ''}`,
+              subtitle: `${repo.full_name} — New release`,
+              timestamp: ts,
+              url: release.html_url,
+              metadata: {
+                repo: repo.full_name,
+                tag: release.tag_name,
+                prerelease: release.prerelease ? 'true' : 'false'
+              },
+              read: false
+            })
+          }
+        } catch (err) {
+          console.error(`[DevPulse] Failed to poll releases for ${repo.full_name}:`, err)
+        }
+      }
+    } catch (err) {
+      console.error('[DevPulse] Failed to poll releases:', err)
+    }
+
     this.lastPollTimestamp = Date.now()
     return events
   }
