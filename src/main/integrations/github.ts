@@ -187,6 +187,9 @@ export class GitHubIntegration extends Integration {
       })
 
       for (const notif of notifications) {
+        // CheckSuite notifications duplicate workflow run events already polled above
+        if (notif.subject.type === 'CheckSuite') continue
+
         events.push({
           id: this.generateEventId('github', `notif-${notif.id}`),
           source: 'github',

@@ -110,10 +110,15 @@ let schedulerReschedule: ((source: EventSource, intervalMs: number) => void) | n
 
 let activePollCount = 0
 
+/** Prevent concurrent polls of the same source */
+const activePollLocks = new Set<EventSource>()
+
 async function pollSource(
   source: EventSource,
   getMainWindow: () => BrowserWindow | null
 ): Promise<void> {
+  if (activePollLocks.has(source)) return
+  activePollLocks.add(source)
   try {
     const integration = getIntegration(source)
     if (!integration) return
@@ -162,6 +167,7 @@ async function pollSource(
   } catch (err) {
     console.error(`[DevPulse] Poll failed for ${source}:`, err)
   } finally {
+    activePollLocks.delete(source)
     activePollCount = Math.max(0, activePollCount - 1)
     if (activePollCount === 0) {
       notifyPollingState(getMainWindow(), false)

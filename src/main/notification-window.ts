@@ -116,8 +116,7 @@ function getWindowPosition(index: number): { x: number; y: number } {
   const { x: workX, y: workY } = display.workArea
 
   // On Wayland, workArea may not account for panels like waybar.
-  // Use a generous bottom margin to stay clear of panel bars.
-  const BOTTOM_MARGIN = 48
+  const BOTTOM_MARGIN = getCompositor() ? 48 : 0
 
   return {
     x: workX + width - WINDOW_WIDTH - SCREEN_MARGIN,
@@ -196,7 +195,8 @@ export function showNotificationWindow(data: NotificationData): void {
   })
 
   // Handle click via console message (sandboxed window with no preload)
-  win.webContents.on('console-message', (_event, _level, message) => {
+  win.webContents.on('console-message', (event) => {
+    const message = event.message
     if (message === 'notification:click' && data.url) {
       try {
         const parsed = new URL(data.url)

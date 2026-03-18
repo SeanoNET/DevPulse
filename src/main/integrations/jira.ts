@@ -3,6 +3,18 @@ import { getCredential } from '../auth'
 import { getConfig } from '../store'
 import type { DevEvent, EventSource } from '../../shared/types'
 
+interface JiraComment {
+  author?: { displayName: string }
+  body?: unknown
+  created: string
+}
+
+interface JiraChangelogEntry {
+  created: string
+  author?: { displayName: string }
+  items: { field: string; fromString?: string; toString?: string }[]
+}
+
 interface JiraIssue {
   id: string
   key: string
@@ -12,22 +24,13 @@ interface JiraIssue {
     priority?: { name: string }
     updated: string
     assignee?: { displayName: string }
+    comment?: { comments: JiraComment[] }
   }
+  changelog?: { histories: JiraChangelogEntry[] }
 }
 
 export class JiraIntegration extends Integration {
   readonly source: EventSource = 'jira'
-  private accountId: string | null = null
-
-  private async resolveAccountId(): Promise<string> {
-    if (this.accountId) return this.accountId
-    const siteUrl = this.getSiteUrl()
-    const response = await fetch(`${siteUrl}/rest/api/3/myself`, { headers: this.getHeaders() })
-    if (!response.ok) throw new Error(`Failed to resolve Jira user: ${response.status}`)
-    const data = (await response.json()) as { accountId: string }
-    this.accountId = data.accountId
-    return this.accountId
-  }
 
   private getSiteUrl(): string {
     const url = getCredential('jira:url')
@@ -104,7 +107,9 @@ export class JiraIntegration extends Integration {
     const siteUrl = this.getSiteUrl()
     const events: DevEvent[] = []
 
-    const sinceMs = this.lastPollTimestamp || Date.now() - 86_400_000
+    const sinceMs = this.lastPollTimestamp
+      ? this.lastPollTimestamp - 60_000
+      : Date.now() - 86_400_000
     const d = new Date(sinceMs)
     const sinceDate = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
@@ -112,63 +117,155 @@ export class JiraIntegration extends Integration {
     const projects = (jiraConfig?.settings?.jiraProjects ?? [])
       .filter((k) => /^[A-Za-z][A-Za-z0-9_-]*$/.test(k))
 
-    const accountId = await this.resolveAccountId()
     const eventTypes = jiraConfig?.settings?.jiraEventTypes ?? ['assigned', 'reported', 'watching']
     const userClauses: string[] = []
-    if (eventTypes.includes('assigned')) userClauses.push(`assignee = "${accountId}"`)
-    if (eventTypes.includes('reported')) userClauses.push(`reporter = "${accountId}"`)
-    if (eventTypes.includes('watching')) userClauses.push(`watcher = "${accountId}"`)
-    if (userClauses.length === 0) userClauses.push(`assignee = "${accountId}"`)
-    const userFilter = `(${userClauses.join(' OR ')})`
+    if (eventTypes.includes('assigned')) userClauses.push('assignee = currentUser()')
+    if (eventTypes.includes('reported')) userClauses.push('reporter = currentUser()')
+    if (eventTypes.includes('watching')) userClauses.push('watcher = currentUser()')
+    if (userClauses.length === 0) userClauses.push('assignee = currentUser()')
 
-    let jql: string
-    if (projects.length > 0) {
-      const projectList = projects.map((k) => `"${k}"`).join(',')
-      jql = `project IN (${projectList}) AND ${userFilter} AND updated >= "${sinceDate}" ORDER BY updated DESC`
-    } else {
-      jql = `${userFilter} AND updated >= "${sinceDate}" ORDER BY updated DESC`
+    const projectFilter = projects.length > 0
+      ? `project IN (${projects.map((k) => `"${k}"`).join(',')}) AND `
+      : ''
+
+    // Try with all selected clauses first; if watcher causes a permission error, retry without it
+    const jqlCandidates = [
+      `${projectFilter}(${userClauses.join(' OR ')}) AND updated >= "${sinceDate}" ORDER BY updated DESC`
+    ]
+    if (userClauses.length > 1 && eventTypes.includes('watching')) {
+      const withoutWatcher = userClauses.filter((c) => !c.includes('watcher'))
+      if (withoutWatcher.length > 0) {
+        jqlCandidates.push(
+          `${projectFilter}(${withoutWatcher.join(' OR ')}) AND updated >= "${sinceDate}" ORDER BY updated DESC`
+        )
+      }
     }
 
-    console.log(`[DevPulse] Jira JQL: ${jql}`)
+    let lastError = ''
+    for (const jql of jqlCandidates) {
+      console.log(`[DevPulse] Jira JQL: ${jql}`)
+      try {
+        const response = await fetch(
+          `${siteUrl}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=50&fields=summary,status,priority,updated,assignee,comment&expand=changelog`,
+          { headers: this.getHeaders() }
+        )
 
-    try {
-      const response = await fetch(
-        `${siteUrl}/rest/api/3/search?jql=${encodeURIComponent(jql)}&maxResults=50`,
-        { headers: this.getHeaders() }
-      )
+        if (!response.ok) {
+          const text = await response.text()
+          lastError = `Jira API returned ${response.status}: ${text.slice(0, 200)}`
+          console.error(`[DevPulse] ${lastError}`)
+          // If this was a 400 (bad JQL) and we have a fallback, try next candidate
+          if (response.status === 400 && jqlCandidates.indexOf(jql) < jqlCandidates.length - 1) {
+            console.log('[DevPulse] Retrying Jira query without watcher clause...')
+            continue
+          }
+          break
+        }
 
-      if (!response.ok) {
-        const text = await response.text()
-        console.error(`[DevPulse] Jira poll returned ${response.status}: ${text.slice(0, 200)}`)
-        return events
+        const data = (await response.json()) as { issues: JiraIssue[] }
+        console.log(`[DevPulse] Jira search returned ${data.issues?.length ?? 0} issues`)
+        for (const issue of data.issues ?? []) {
+          const severity = this.mapSeverity(issue)
+          const subtitle = this.buildSubtitle(issue, sinceMs)
+
+          events.push({
+            id: this.generateEventId('jira', `${issue.key}-${issue.fields.updated}`),
+            source: 'jira',
+            severity,
+            title: `${issue.key}: ${issue.fields.summary}`,
+            subtitle,
+            timestamp: new Date(issue.fields.updated).getTime(),
+            url: `${siteUrl}/browse/${issue.key}`,
+            metadata: {
+              key: issue.key,
+              status: issue.fields.status.name,
+              priority: issue.fields.priority?.name ?? 'None'
+            },
+            read: false
+          })
+        }
+        lastError = ''
+        break // Success — don't try fallback
+      } catch (err) {
+        lastError = `Jira poll failed: ${err}`
+        console.error(`[DevPulse] ${lastError}`)
       }
-      const data = (await response.json()) as { issues: JiraIssue[] }
+    }
 
-      for (const issue of data.issues ?? []) {
-        const severity = this.mapSeverity(issue)
-
-        events.push({
-          id: this.generateEventId('jira', `${issue.key}-${issue.fields.updated}`),
-          source: 'jira',
-          severity,
-          title: `${issue.key}: ${issue.fields.summary}`,
-          subtitle: `Status: ${issue.fields.status.name}`,
-          timestamp: new Date(issue.fields.updated).getTime(),
-          url: `${siteUrl}/browse/${issue.key}`,
-          metadata: {
-            key: issue.key,
-            status: issue.fields.status.name,
-            priority: issue.fields.priority?.name ?? 'None'
-          },
-          read: false
-        })
-      }
-    } catch (err) {
-      console.error('[DevPulse] Jira poll failed:', err)
+    // Surface persistent errors as a visible event so the user knows something is wrong
+    if (lastError) {
+      events.push({
+        id: this.generateEventId('jira', `poll-error-${Date.now()}`),
+        source: 'jira',
+        severity: 'error',
+        title: 'Jira polling error',
+        subtitle: lastError,
+        timestamp: Date.now(),
+        url: `${siteUrl}`,
+        metadata: {},
+        read: false
+      })
     }
 
     this.lastPollTimestamp = Date.now()
     return events
+  }
+
+  private buildSubtitle(issue: JiraIssue, sinceMs: number): string {
+    // Check for recent comments
+    const comments = issue.fields.comment?.comments ?? []
+    const recentComment = comments.length > 0
+      ? comments[comments.length - 1]
+      : undefined
+    if (recentComment && new Date(recentComment.created).getTime() >= sinceMs) {
+      const author = recentComment.author?.displayName ?? 'Someone'
+      const preview = this.extractText(recentComment.body)
+      return preview
+        ? `${author}: ${preview}`
+        : `${author} commented`
+    }
+
+    // Check changelog for the most recent change since last poll
+    const histories = issue.changelog?.histories ?? []
+    for (let i = histories.length - 1; i >= 0; i--) {
+      const entry = histories[i]
+      if (new Date(entry.created).getTime() < sinceMs) break
+      const author = entry.author?.displayName ?? 'Someone'
+      for (const item of entry.items) {
+        if (item.field === 'status') {
+          return `${author} changed status: ${item.fromString ?? '?'} → ${item.toString ?? '?'}`
+        }
+        if (item.field === 'assignee') {
+          return `Assigned to ${item.toString ?? 'Unassigned'}`
+        }
+        if (item.field === 'priority') {
+          return `Priority changed to ${item.toString ?? '?'}`
+        }
+      }
+      // Generic change — show field names and a preview of the new value if short
+      const fields = entry.items.map((i) => i.field).join(', ')
+      const firstValue = entry.items[0]?.toString
+      if (firstValue && firstValue.length <= 60) {
+        return `${author} updated ${fields}: ${firstValue}`
+      }
+      return `${author} updated ${fields}`
+    }
+
+    return `Status: ${issue.fields.status.name}`
+  }
+
+  /** Extract plain text from an ADF (Atlassian Document Format) body node */
+  private extractText(body: unknown, maxLen = 80): string {
+    if (!body || typeof body !== 'object') return ''
+    const node = body as { type?: string; text?: string; content?: unknown[] }
+    if (node.text) return node.text.slice(0, maxLen)
+    if (!Array.isArray(node.content)) return ''
+    let result = ''
+    for (const child of node.content) {
+      result += this.extractText(child, maxLen - result.length)
+      if (result.length >= maxLen) break
+    }
+    return result.length > maxLen ? result.slice(0, maxLen - 1) + '…' : result
   }
 
   private mapSeverity(issue: JiraIssue): DevEvent['severity'] {
