@@ -10,9 +10,17 @@ export function AboutTab() {
 
   useEffect(() => {
     window.api.getVersion().then(setVersion)
-    return window.api.onUpdateDownloaded(() => {
+    const unsubDownloaded = window.api.onUpdateDownloaded(() => {
       setUpdateStatus('downloaded')
     })
+    const unsubError = window.api.onUpdateError((error) => {
+      setUpdateStatus('error')
+      setUpdateError(error)
+    })
+    return () => {
+      unsubDownloaded()
+      unsubError()
+    }
   }, [])
 
   const handleCheckForUpdates = async () => {

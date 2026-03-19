@@ -40,6 +40,13 @@ export function initAutoUpdater(): void {
     }
   })
 
+  autoUpdater.on('error', (err) => {
+    console.error('[updater] error:', err)
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('app:update-error', String(err))
+    }
+  })
+
   // Check on launch and every 4 hours
   autoUpdater.checkForUpdates().catch((err) => {
     console.error('[updater] startup check failed:', err)

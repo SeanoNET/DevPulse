@@ -45,6 +45,12 @@ const api: IpcApi = {
     return () => ipcRenderer.removeListener('app:update-downloaded', handler)
   },
 
+  onUpdateError: (callback) => {
+    const handler = (_: unknown, error: string) => callback(error)
+    ipcRenderer.on('app:update-error', handler)
+    return () => ipcRenderer.removeListener('app:update-error', handler)
+  },
+
   hideWindow: () => ipcRenderer.invoke('window:hide'),
   minimizeWindow: () => ipcRenderer.invoke('window:minimize')
 }
