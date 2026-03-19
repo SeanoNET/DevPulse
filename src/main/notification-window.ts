@@ -86,8 +86,8 @@ function buildNotificationHtml(data: NotificationData): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
 html{background:transparent}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:transparent;color:#cdd6f4;overflow:hidden;cursor:default;user-select:none;padding:4px}
-.n{display:flex;height:calc(100% - 8px);min-height:80px;animation:s .2s ease-out;background:#1e1e2e;border-radius:10px;border:1px solid rgba(255,255,255,0.1);box-shadow:0 4px 20px rgba(0,0,0,0.5)}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:transparent;color:#cdd6f4;overflow:hidden;cursor:default;user-select:none;padding:0}
+.n{display:flex;height:100%;animation:s .2s ease-out;background:#1e1e2e;border-radius:10px;border:1px solid rgba(255,255,255,0.1);box-shadow:0 4px 20px rgba(0,0,0,0.5)}
 .sb{width:4px;flex-shrink:0;border-radius:10px 0 0 10px;background:${severityColor}}
 .ia{display:flex;align-items:center;justify-content:center;width:44px;flex-shrink:0;opacity:.8;color:${sourceColor}}
 .ia svg{width:20px;height:20px}
