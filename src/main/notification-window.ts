@@ -117,10 +117,11 @@ function getWindowPosition(index: number): { x: number; y: number } {
 
   // On Wayland, workArea may not account for panels like waybar.
   const BOTTOM_MARGIN = getCompositor() ? 48 : 0
+  const gap = getCompositor() ? WINDOW_GAP : 4
 
   return {
     x: workX + width - WINDOW_WIDTH - SCREEN_MARGIN,
-    y: workY + height - (WINDOW_HEIGHT + WINDOW_GAP) * (index + 1) - BOTTOM_MARGIN
+    y: workY + height - (WINDOW_HEIGHT + gap) * (index + 1) - BOTTOM_MARGIN
   }
 }
 
