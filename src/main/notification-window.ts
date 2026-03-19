@@ -5,7 +5,7 @@ import { getConfig } from './store'
 
 const WINDOW_WIDTH = 360
 const WINDOW_HEIGHT = 120
-const WINDOW_GAP = 8
+const WINDOW_GAP = 4
 const SCREEN_MARGIN = 12
 
 /** Track active notification windows for stacking */
@@ -79,7 +79,8 @@ function buildNotificationHtml(data: NotificationData): string {
 
   // Escape text content for safe HTML embedding
   const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-  const title = escapeHtml(data.title)
+  const highlightVersion = (s: string) => escapeHtml(s).replace(/\bv?\d+\.\d+\.\d+\S*/g, '<span style="color:#22c55e;font-weight:500">$&</span>')
+  const title = highlightVersion(data.title)
   const body = escapeHtml(data.body)
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -105,7 +106,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   <button class="x" id="x">&times;</button>
 </div>
 <script>
-document.getElementById('x').addEventListener('click',function(e){e.stopPropagation();window.close()});
+document.getElementById('x').addEventListener('click',function(e){e.stopPropagation();console.log('notification:close')});
 document.getElementById('n').addEventListener('click',function(){console.log('notification:click')});
 </script></body></html>`
 }
@@ -117,7 +118,7 @@ function getWindowPosition(index: number): { x: number; y: number } {
 
   // On Wayland, workArea may not account for panels like waybar.
   const BOTTOM_MARGIN = getCompositor() ? 48 : 0
-  const gap = getCompositor() ? WINDOW_GAP : 4
+  const gap = WINDOW_GAP
 
   return {
     x: workX + width - WINDOW_WIDTH - SCREEN_MARGIN,
@@ -198,7 +199,9 @@ export function showNotificationWindow(data: NotificationData): void {
   // Handle click via console message (sandboxed window with no preload)
   win.webContents.on('console-message', (event) => {
     const message = event.message
-    if (message === 'notification:click' && data.url) {
+    if (message === 'notification:close') {
+      closeNotificationWindow(win)
+    } else if (message === 'notification:click' && data.url) {
       try {
         const parsed = new URL(data.url)
         if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {

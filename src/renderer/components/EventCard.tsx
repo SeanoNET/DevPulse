@@ -9,10 +9,11 @@ interface EventCardProps {
   onOpenUrl: (url: string) => void
 }
 
-const TAG_PATTERN = /^\d+\.\d+\.\d+/
+const TAG_PATTERN = /^v?\d+\.\d+\.\d+/
+const VERSION_IN_TEXT = /\bv?\d+\.\d+\.\d+[^\s]*/
 
 function formatSubtitle(subtitle: string) {
-  // Match the ref in parentheses like (main) or (0.2.0)
+  // Match the ref in parentheses like (main) or (v0.5.7)
   const match = subtitle.match(/\(([^)]+)\)/)
   if (!match) return <>{subtitle}</>
 
@@ -27,6 +28,22 @@ function formatSubtitle(subtitle: string) {
     <>
       {before}
       <span className="text-[var(--color-severity-success)] font-medium">({ref})</span>
+      {after}
+    </>
+  )
+}
+
+function formatTitle(title: string) {
+  const match = title.match(VERSION_IN_TEXT)
+  if (!match) return <>{title}</>
+
+  const before = title.slice(0, match.index!)
+  const after = title.slice(match.index! + match[0].length)
+
+  return (
+    <>
+      {before}
+      <span className="text-[var(--color-severity-success)] font-medium">{match[0]}</span>
       {after}
     </>
   )
@@ -72,7 +89,7 @@ export function EventCard({ event, onMarkRead, onOpenUrl }: EventCardProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline justify-between gap-2">
             <p className="text-xs font-medium truncate leading-tight" title={event.title}>
-              {event.title}
+              {formatTitle(event.title)}
             </p>
             <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
               {relativeTime(event.timestamp)}
