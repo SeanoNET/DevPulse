@@ -4,12 +4,13 @@ import type { DevEvent } from '../shared/types'
 import { getConfig } from './store'
 
 const WINDOW_WIDTH = 360
-const WINDOW_HEIGHT = 96
+const DEFAULT_WINDOW_HEIGHT = 72
+const MIN_WINDOW_HEIGHT = 56
 const WINDOW_GAP = 4
 const SCREEN_MARGIN = 12
 
 /** Track active notification windows for stacking */
-const activeWindows: BrowserWindow[] = []
+const activeWindows: Array<{ win: BrowserWindow; height: number }> = []
 
 let notifCounter = 0
 
@@ -87,11 +88,11 @@ function buildNotificationHtml(data: NotificationData): string {
 *{margin:0;padding:0;box-sizing:border-box}
 html{background:transparent}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:transparent;color:#cdd6f4;overflow:hidden;cursor:default;user-select:none;padding:0}
-.n{display:flex;height:100%;animation:s .2s ease-out;background:#1e1e2e;border-radius:10px;border:1px solid rgba(255,255,255,0.1);box-shadow:0 4px 20px rgba(0,0,0,0.5)}
+.n{display:flex;min-height:56px;animation:s .2s ease-out;background:#1e1e2e;border-radius:10px;border:1px solid rgba(255,255,255,0.1);box-shadow:0 4px 20px rgba(0,0,0,0.5)}
 .sb{width:4px;flex-shrink:0;border-radius:10px 0 0 10px;background:${severityColor}}
 .ia{display:flex;align-items:center;justify-content:center;width:44px;flex-shrink:0;opacity:.8;color:${sourceColor}}
 .ia svg{width:20px;height:20px}
-.c{flex:1;padding:10px 8px 10px 0;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.c{flex:1;padding:8px 8px 8px 0;display:flex;flex-direction:column;justify-content:center;min-width:0}
 .t{font-size:12px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
 .b{font-size:11px;color:#a6adc8;line-height:1.3;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
 .x{position:absolute;top:6px;right:8px;width:18px;height:18px;border:none;background:none;color:#6c7086;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:4px;line-height:1}
@@ -118,11 +119,15 @@ function getWindowPosition(index: number): { x: number; y: number } {
 
   // On Wayland, workArea may not account for panels like waybar.
   const BOTTOM_MARGIN = getCompositor() ? 48 : 0
-  const gap = WINDOW_GAP
+  let stackHeight = SCREEN_MARGIN + BOTTOM_MARGIN
+  for (let i = 0; i <= index; i++) {
+    stackHeight += activeWindows[i].height
+    if (i < index) stackHeight += WINDOW_GAP
+  }
 
   return {
     x: workX + width - WINDOW_WIDTH - SCREEN_MARGIN,
-    y: workY + height - (WINDOW_HEIGHT + gap) * (index + 1) - BOTTOM_MARGIN
+    y: workY + height - stackHeight
   }
 }
 
@@ -136,14 +141,38 @@ function repositionWindow(win: BrowserWindow, pos: { x: number; y: number }): vo
   }
 }
 
+function repositionAllWindows(): void {
+  for (let i = 0; i < activeWindows.length; i++) {
+    repositionWindow(activeWindows[i].win, getWindowPosition(i))
+  }
+}
+
 function removeFromStack(win: BrowserWindow): void {
-  const idx = activeWindows.indexOf(win)
+  const idx = activeWindows.findIndex((entry) => entry.win === win)
   if (idx !== -1) {
     activeWindows.splice(idx, 1)
-    for (let i = idx; i < activeWindows.length; i++) {
-      const pos = getWindowPosition(i)
-      repositionWindow(activeWindows[i], pos)
-    }
+    repositionAllWindows()
+  }
+}
+
+async function measureNotificationHeight(win: BrowserWindow): Promise<number> {
+  try {
+    const measured = await win.webContents.executeJavaScript(
+      `new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          const card = document.getElementById('n')
+          const height = card
+            ? Math.ceil(card.getBoundingClientRect().height)
+            : Math.ceil(document.body.getBoundingClientRect().height)
+          resolve(height)
+        })
+      })`,
+      true
+    )
+    const height = Number(measured)
+    return Number.isFinite(height) ? Math.max(MIN_WINDOW_HEIGHT, height) : DEFAULT_WINDOW_HEIGHT
+  } catch {
+    return DEFAULT_WINDOW_HEIGHT
   }
 }
 
@@ -151,14 +180,11 @@ export function showNotificationWindow(data: NotificationData): void {
   const config = getConfig()
   const durationMs = config.notifications.notificationDurationMs || 10_000
 
-  const pos = getWindowPosition(activeWindows.length)
   const windowTitle = `devpulse-notif-${notifCounter++}`
 
   const win = new BrowserWindow({
     width: WINDOW_WIDTH,
-    height: WINDOW_HEIGHT,
-    x: pos.x,
-    y: pos.y,
+    height: DEFAULT_WINDOW_HEIGHT,
     title: windowTitle,
     frame: false,
     resizable: false,
@@ -178,18 +204,36 @@ export function showNotificationWindow(data: NotificationData): void {
     }
   })
 
-  activeWindows.push(win)
+  activeWindows.push({ win, height: DEFAULT_WINDOW_HEIGHT })
 
   const html = buildNotificationHtml(data)
   win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
 
-  win.once('ready-to-show', () => {
+  let contentSized = false
+  let readyToShow = false
+
+  const tryShow = (): void => {
+    if (!contentSized || !readyToShow || win.isDestroyed()) return
+    repositionAllWindows()
     win.showInactive()
-    // On Wayland, compositors ignore Electron's x/y positioning.
-    // Use compositor IPC (swaymsg/hyprctl) to move the window.
     if (getCompositor()) {
-      setTimeout(() => compositorMove(windowTitle, pos.x, pos.y), 50)
+      setTimeout(() => repositionAllWindows(), 50)
     }
+  }
+
+  win.webContents.once('did-finish-load', async () => {
+    const height = await measureNotificationHeight(win)
+    const entry = activeWindows.find((item) => item.win === win)
+    if (!entry || win.isDestroyed()) return
+    entry.height = height
+    win.setSize(WINDOW_WIDTH, height, false)
+    contentSized = true
+    tryShow()
+  })
+
+  win.once('ready-to-show', () => {
+    readyToShow = true
+    tryShow()
   })
 
   win.webContents.on('will-navigate', (e) => {
