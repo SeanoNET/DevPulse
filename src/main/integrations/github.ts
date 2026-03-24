@@ -13,12 +13,6 @@ const STATUS_LABELS: Record<string, string> = {
   timed_out: 'Timed out'
 }
 
-const RELEASE_TAG_PATTERN = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/
-
-function isReleaseTagRef(ref: string): boolean {
-  return RELEASE_TAG_PATTERN.test(ref)
-}
-
 export class GitHubIntegration extends Integration {
   readonly source: EventSource = 'github'
   private octokit: Octokit | null = null
@@ -99,11 +93,6 @@ export class GitHubIntegration extends Integration {
 
             const displayTitle = (run as any).display_title || run.head_commit?.message || run.name || 'Workflow'
             const branch = run.head_branch ?? ''
-            if (branch && isReleaseTagRef(branch)) {
-              // Release tags already produce dedicated release events.
-              // Skipping their workflow runs avoids duplicate notifications.
-              continue
-            }
             const branchLabel = branch ? ` (${branch})` : ''
             const status = run.conclusion ?? run.status ?? 'unknown'
 
@@ -160,9 +149,6 @@ export class GitHubIntegration extends Integration {
 
           const displayTitle = (run as any).display_title || run.head_commit?.message || run.name || 'Workflow'
           const branch = run.head_branch ?? ''
-          if (branch && isReleaseTagRef(branch)) {
-            continue
-          }
           const branchLabel = branch ? ` (${branch})` : ''
           const status = run.conclusion ?? run.status ?? 'unknown'
 
