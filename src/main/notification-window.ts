@@ -6,7 +6,7 @@ import { getConfig } from './store'
 const WINDOW_WIDTH = 360
 const DEFAULT_WINDOW_HEIGHT = 72
 const MIN_WINDOW_HEIGHT = 56
-const WINDOW_GAP = 4
+const WINDOW_GAP = 8
 const SCREEN_MARGIN = 12
 
 /** Track active notification windows for stacking */
