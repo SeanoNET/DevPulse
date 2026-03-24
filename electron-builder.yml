@@ -20,6 +20,7 @@ extraResources:
 asar: true
 
 win:
+  artifactName: "${productName}-Setup-${version}.${ext}"
   target:
     - target: nsis
       arch:
