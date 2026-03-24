@@ -4,7 +4,7 @@ import type { DevEvent } from '../shared/types'
 import { getConfig } from './store'
 
 const WINDOW_WIDTH = 360
-const WINDOW_HEIGHT = 120
+const WINDOW_HEIGHT = 96
 const WINDOW_GAP = 4
 const SCREEN_MARGIN = 12
 
