@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { IpcApi } from '@shared/types'
 import { EventFeed } from './components/EventFeed'
 import { Settings } from './components/Settings'
+import { applyTheme } from './lib/theme'
 
 declare global {
   interface Window {
@@ -19,6 +20,14 @@ export function App() {
     window.api.getUnreadCount().then(setUnreadCount).catch(() => {})
     const unsub = window.api.onUnreadCountChanged((count) => setUnreadCount(count))
     return unsub
+  }, [])
+
+  useEffect(() => {
+    window.api.getConfig()
+      .then((config) => applyTheme(config.general.theme))
+      .catch((err) => {
+        console.error('[DevPulse] Failed to initialize theme:', err)
+      })
   }, [])
 
   return (

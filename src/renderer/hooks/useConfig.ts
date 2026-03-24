@@ -1,13 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { AppConfig, EventSource } from '@shared/types'
-
-function applyTheme(theme: AppConfig['general']['theme']): void {
-  const root = document.documentElement
-  root.classList.remove('dark', 'light')
-  if (theme === 'dark' || theme === 'light') {
-    root.classList.add(theme)
-  }
-}
+import { applyTheme } from '../lib/theme'
 
 export function useConfig() {
   const [config, setConfig] = useState<AppConfig | null>(null)
